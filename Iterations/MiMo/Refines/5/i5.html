@@ -259,17 +259,17 @@ function createCell(x, y, genome, parent) {
   const sociability = g[4]; // blue nucleus (pack)
   const greed       = g[5]; // green nucleus (hunger threshold)
 
-  // REBALANCE v4: Further buff regen (green) and armor (blue)
-  const mass = 1 + armor / 255 * 1.2; // Even less mass penalty
-  const maxHp = 110 + armor * 1.0; // More HP from armor
-  const maxEnergy = 150 + strength * 0.5; // More base energy
-  const speed = (320 - armor * 0.3) / mass; // Less speed penalty, higher base
-  const attackCooldown = 0.2 + (strength / 255) * 1.2; // Faster attacks
-  const attackDamage = 7 + (strength / 255) * 45; // Slightly more damage for all
-  const knockbackForce = 70 + strength * 0.2; // More knockback
-  const regenRate = regen / 255 * 38; // EVEN MORE better regen (was *28, now +35%)
-  // High regen = much less energy consumption
-  const energyConsumption = 1.2 + regen / 255 * 1.5 + (regen > 150 ? 0.5 : 0); // Even lower consumption
+  // REBALANCE v5: NERF armor (blue), BUFF regen (green) even more
+  const mass = 1 + armor / 255 * 1.8; // More mass penalty for armor (nerf)
+  const maxHp = 90 + armor * 0.6; // Less HP from armor (nerf)
+  const maxEnergy = 140 + strength * 0.4; // Slightly less base energy
+  const speed = (300 - armor * 0.5) / mass; // More speed penalty for armor (nerf)
+  const attackCooldown = 0.25 + (strength / 255) * 1.4; // Slightly slower attacks
+  const attackDamage = 6 + (strength / 255) * 40; // Slightly less damage
+  const knockbackForce = 60 + strength * 0.15; // Less knockback
+  const regenRate = regen / 255 * 38; // MASSIVELY buffed regen (was *28)
+  // High regen = much less energy consumption, even lower now
+  const energyConsumption = 1.2 + regen / 255 * 1.5 + (regen > 150 ? 0.5 : 0); // Even lower consumption (buff)
 
   return {
     id: nextId++,
@@ -459,7 +459,7 @@ function wallSteerDir(cell, tx, ty) {
 
   let repX = 0, repY = 0;
   // TASK 2: Reduced avoid radius for walls - cells will approach closer before avoiding
-  const avoidRadius = cell.radius + 15; // Was 40, now 15 - much closer approach
+  const avoidRadius = cell.radius + 8; // Was 40, now 15 - much closer approach
 
   for (const w of walls) {
     const wdx = cell.x - w.x, wdy = cell.y - w.y;
@@ -478,7 +478,7 @@ function wallSteerDir(cell, tx, ty) {
       const perpX = (w.x - cell.x) - fx * proj;
       const perpY = (w.y - cell.y) - fy * proj;
       const perpD = Math.hypot(perpX, perpY);
-      const wallClearance = cell.radius + w.radius + 10; // Reduced clearance
+      const wallClearance = cell.radius + w.radius + 5; // Reduced clearance
       if (perpD < wallClearance && perpD > 0.1) {
         const str = (1 - perpD / wallClearance) * 2.5;
         repX -= (perpX / perpD) * str;
@@ -568,14 +568,14 @@ function isPositionReachable(cell, tx, ty) {
 }
 
 function updateAI(cell, dt) {
-  const sightRange = 300;
+  const sightRange = 400;
   const nearbyCells = getNearbyCells(cell.x, cell.y, sightRange)
     .filter(c => c !== cell && c.alive && dist(cell, c) < sightRange);
 
-  // Find nearby food (plants and meat only - no longer target sources directly)
+  // Find nearby food (plants, meat, and food sources)
   const nearbyPlants = plants.filter(p => p.alive && dist(cell, p) < sightRange);
   const nearbyMeats  = meats.filter(m => m.alive && dist(cell, m) < sightRange);
-  // Removed: nearbySources - cells no longer pathfind to sources, only to spawned plants/meat
+  const nearbySources = foodSources.filter(s => s.alive && dist(cell, s) < sightRange);
 
   if (cell.regenCombatNerf > 0) cell.regenCombatNerf -= dt;
 
@@ -666,8 +666,8 @@ function updateAI(cell, dt) {
         cell.taskTarget = null;
       }
     }
-    // Removed: Target food sources directly - cells now only go to plants/meat spawned by sources
-    // No more 'forage_source' task since standing near sources no longer gives energy
+    // REMOVED: Target food sources directly - cells should only go to plants/meat spawned by sources
+    // This prevents infinite farming by standing at the source itself
     if (isVeryHungry) {
       const prey = findNearest(cell, nearbyCells, sightRange);
       // Check if prey is reachable before targeting
@@ -728,7 +728,6 @@ function updateMovement(cell, dt) {
 
     case 'forage':
     case 'forage_meat':
-      // Removed 'forage_source' - cells no longer pathfind to sources directly
       if (cell.taskTarget && cell.taskTarget.alive) {
         const [dx, dy] = wallSteerDir(cell, cell.taskTarget.x, cell.taskTarget.y);
         dirX = dx; dirY = dy; moving = true;
@@ -814,7 +813,7 @@ function updateMovement(cell, dt) {
   if (cell.y < cell.radius) { cell.y = cell.radius; cell.vy = Math.abs(cell.vy) * 0.5; }
   if (cell.y > worldH - cell.radius) { cell.y = worldH - cell.radius; cell.vy = -Math.abs(cell.vy) * 0.5; }
 
-  // Physical wall collision (push out)
+  // Physical wall collision (push out) - walls AND food sources
   for (const w of walls) {
     const dx = cell.x - w.x, dy = cell.y - w.y;
     const d = Math.hypot(dx, dy);
@@ -822,6 +821,23 @@ function updateMovement(cell, dt) {
     if (d < minD && d > 0) {
       cell.x = w.x + (dx / d) * minD;
       cell.y = w.y + (dy / d) * minD;
+      // Bounce velocity
+      const dot = cell.vx * (dx / d) + cell.vy * (dy / d);
+      if (dot < 0) {
+        cell.vx -= dot * (dx / d) * 1.2;
+        cell.vy -= dot * (dy / d) * 1.2;
+      }
+    }
+  }
+  // Also push out from food sources (they have collision now)
+  for (const s of foodSources) {
+    if (!s.alive) continue;
+    const dx = cell.x - s.x, dy = cell.y - s.y;
+    const d = Math.hypot(dx, dy);
+    const minD = cell.radius + s.radius;
+    if (d < minD && d > 0) {
+      cell.x = s.x + (dx / d) * minD;
+      cell.y = s.y + (dy / d) * minD;
       // Bounce velocity
       const dot = cell.vx * (dx / d) + cell.vy * (dy / d);
       if (dot < 0) {
@@ -959,12 +975,11 @@ function updateEconomy(cell, dt) {
     }
   }
 
-    // Eat from food sources removed - cells now only eat plants/meat spawned by sources
-    // No more passive energy farming from standing near sources
+  // REMOVED: Eat from food sources directly - this allowed infinite farming without eating actual plants/meat
+  // Cells now only gain energy by eating plants and meat spawned BY the sources
 
   // Also eat nearby meat/plants regardless of task (proximity pickup)
   if (cell.task !== 'forage' && cell.task !== 'forage_meat') {
-    // Removed 'forage_source' check since task no longer exists
     for (const m of meats) {
       if (!m.alive) continue;
       if (dist(cell, m) < cell.radius + m.radius) {
@@ -1415,10 +1430,6 @@ function updateHoverPanel(mouseX, mouseY) {
       <div class="stat-row"><span>🔴 Смелость:</span><span>${c.courage}</span></div>
       <div class="stat-row"><span>🔵 Стайность:</span><span>${c.sociability}</span></div>
       <div class="stat-row"><span>🟢 Прожорливость:</span><span>${c.greed}</span></div>
-      <div class="section-title">Статистика ядра</div>
-      <div class="stat-row"><span>🔴 Красное:</span><span>${c.genome[3]}</span></div>
-      <div class="stat-row"><span>🔵 Синее:</span><span>${c.genome[4]}</span></div>
-      <div class="stat-row"><span>🟢 Зеленое:</span><span>${c.genome[5]}</span></div>
       <div class="section-title">Поведение</div>
       <div class="stat-row"><span>Задача:</span><span>${taskNames[c.task] || c.task}</span></div>
       <div class="stat-row"><span>Возраст:</span><span>${c.age.toFixed(1)}с</span></div>
