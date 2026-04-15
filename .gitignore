@@ -1,1 +1,1 @@
-Nothing needs to be added to .gitignore for this change list, as it only contains a single HTML file addition (`Iterations/MiMo/Refines/4/i4.html`) which is a source file and should not be ignored.
+Nothing needs to be added to .gitignore since the only change is adding a single HTML file (`Iterations/MiMo/Refines/5/i5.html`) which is a source/config file and not a build artifact, dependency, or temporary file.
