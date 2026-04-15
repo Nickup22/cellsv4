@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Клетки 4</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; color: #ccc; }
+canvas { display: block; cursor: crosshair; }
+
+/* Top bar */
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0; height: 36px;
+  background: rgba(20,20,20,0.92); display: flex; align-items: center;
+  padding: 0 12px; gap: 8px; z-index: 100; border-bottom: 1px solid #333;
+  font-size: 13px;
+}
+#topbar button, #topbar select, #topbar input[type=range] {
+  background: #2a2a2a; color: #ccc; border: 1px solid #444; border-radius: 4px;
+  padding: 3px 8px; cursor: pointer; font-size: 12px;
+}
+#topbar button:hover { background: #3a3a3a; }
+#topbar button.active { background: #444; border-color: #888; }
+#topbar label { display: flex; align-items: center; gap: 4px; }
+.sep { width: 1px; height: 20px; background: #444; margin: 0 4px; }
+#stats { margin-left: auto; font-size: 12px; opacity: 0.7; }
+
+/* Hover panel */
+#hoverPanel {
+  position: fixed; pointer-events: none; background: rgba(15,15,20,0.93);
+  border: 1px solid #555; border-radius: 6px; padding: 10px 12px;
+  font-size: 12px; line-height: 1.5; min-width: 200px; max-width: 280px;
+  display: none; z-index: 200; backdrop-filter: blur(4px);
+}
+#hoverPanel .hp-bar { height: 6px; background: #333; border-radius: 3px; overflow: hidden; margin: 3px 0; }
+#hoverPanel .hp-fill { height: 100%; border-radius: 3px; transition: width 0.1s; }
+#hoverPanel .hard-zone { height: 100%; background: #8b0000; position: absolute; right: 0; top: 0; }
+#hoverPanel .stat-row { display: flex; justify-content: space-between; }
+#hoverPanel .section-title { color: #aaa; font-weight: bold; margin-top: 4px; border-bottom: 1px solid #333; padding-bottom: 2px; }
+.genome-bar { display: flex; gap: 2px; margin: 4px 0; }
+.genome-bar div { width: 20px; height: 10px; border-radius: 2px; border: 1px solid #555; }
+
+/* Settings panel */
+#settingsPanel {
+  position: fixed; top: 44px; right: 8px; background: rgba(15,15,20,0.95);
+  border: 1px solid #444; border-radius: 8px; padding: 14px; z-index: 150;
+  width: 300px; max-height: 80vh; overflow-y: auto; display: none;
+  font-size: 12px;
+}
+#settingsPanel h3 { margin-bottom: 8px; color: #ddd; font-size: 14px; }
+#settingsPanel .setting-group { margin-bottom: 10px; }
+#settingsPanel .setting-group label { display: flex; justify-content: space-between; margin: 3px 0; }
+#settingsPanel input[type=range] { width: 120px; }
+#settingsPanel input[type=number] { width: 60px; background: #222; border: 1px solid #444; color: #ccc; border-radius: 3px; padding: 2px 4px; }
+
+/* Stats panel */
+#statsPanel {
+  position: fixed; top: 44px; left: 8px; background: rgba(15,15,20,0.95);
+  border: 1px solid #444; border-radius: 8px; padding: 14px; z-index: 150;
+  width: 320px; max-height: 80vh; overflow-y: auto; display: none;
+  font-size: 12px;
+}
+#statsPanel canvas { width: 100%; height: 100px; margin: 6px 0; }
+
+/* Tool indicator */
+#toolIndicator {
+  position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+  background: rgba(20,20,20,0.9); padding: 4px 14px; border-radius: 12px;
+  font-size: 12px; z-index: 100; border: 1px solid #444;
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <button id="btnPlay" class="active" title="Play/Pause">▶</button>
+  <button id="btnPause" title="Pause">⏸</button>
+  <div class="sep"></div>
+  <label>Speed: <input type="range" id="speedSlider" min="0.1" max="5" step="0.1" value="1"><span id="speedVal">1.0x</span></label>
+  <div class="sep"></div>
+  <button id="btnSpawn" class="active" title="Spawn tool">🧬 Spawn</button>
+  <button id="btnPlant" title="Plant tool">🌿 Plant</button>
+  <button id="btnWall" title="Wall tool">🧱 Wall</button>
+  <button id="btnErase" title="Erase tool">🗑 Erase</button>
+  <div class="sep"></div>
+  <button id="btnSettings">⚙</button>
+  <button id="btnStats">📊</button>
+  <span id="stats"></span>
+</div>
+
+<div id="toolIndicator">Tool: Spawn Cell (click to place)</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="hoverPanel"></div>
+
+<div id="settingsPanel">
+  <h3>⚙ Настройки</h3>
+  <div class="setting-group">
+    <h4>Спавн клеток</h4>
+    <label>Начальное кол-во: <input type="number" id="setInitCells" value="30" min="0" max="500"></label>
+    <label>Рандомные: <input type="checkbox" id="setRandomSpawn" checked></label>
+    <label>Радиус: <input type="range" id="setSpawnRadius" min="50" max="400" value="200"> <span id="spawnRadVal">200</span></label>
+  </div>
+  <div class="setting-group">
+    <h4>Растительность</h4>
+    <label>Рейт спавна: <input type="range" id="setPlantRate" min="0" max="10" step="0.5" value="3"> <span id="plantRateVal">3</span></label>
+    <label>Энергия растений: <input type="range" id="setPlantEnergy" min="5" max="100" value="30"> <span id="plantEnergyVal">30</span></label>
+  </div>
+  <div class="setting-group">
+    <h4>Бой</h4>
+    <label>Множитель урона: <input type="range" id="setDmgMult" min="0.1" max="3" step="0.1" value="1"> <span id="dmgMultVal">1.0</span></label>
+    <label>Шанс крита: <input type="range" id="setCritChance" min="0" max="1" step="0.05" value="0.15"> <span id="critVal">0.15</span></label>
+    <label>Хард урон: <input type="checkbox" id="setHardDmg" checked></label>
+  </div>
+  <div class="setting-group">
+    <h4>Окно</h4>
+    <label>Размер мира: <input type="number" id="setWorldW" value="2000" min="500" max="10000"> x <input type="number" id="setWorldH" value="1500" min="500" max="10000"></label>
+    <label>Размер клетки: <input type="range" id="setCellSize" min="5" max="30" value="12"> <span id="cellSizeVal">12</span></label>
+  </div>
+  <div class="setting-group">
+    <button id="btnResetWorld">🔄 Перезапустить мир</button>
+  </div>
+</div>
+
+<div id="statsPanel">
+  <h3>📊 Статистика</h3>
+  <div id="statsContent">
+    <div>Клеток: <span id="statCells">0</span></div>
+    <div>Растений: <span id="statPlants">0</span></div>
+    <div>Убийств: <span id="statKills">0</span></div>
+    <div>Рождений: <span id="statBirths">0</span></div>
+    <div>Смертей от голода: <span id="statStarve">0</span></div>
+    <div class="section-title">Динамика популяции</div>
+    <canvas id="popChart" width="300" height="100"></canvas>
+    <div class="section-title">Средние характеристики</div>
+    <canvas id="statChart" width="300" height="100"></canvas>
+  </div>
+</div>
+
+<script>
+// ==================== ENGINE ====================
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Camera
+let cam = { x: 0, y: 0, zoom: 1 };
+let targetZoom = 1;
+
+// World settings
+let worldW = 2000, worldH = 1500;
+let settings = {
+  cellBaseSize: 12,
+  plantSpawnRate: 3,
+  plantEnergy: 30,
+  dmgMult: 1,
+  critChanceBase: 0.15,
+  hardDmgEnabled: true,
+  initCells: 30,
+  spawnRadius: 200,
+  randomSpawn: true
+};
+
+// Game state
+let cells = [];
+let plants = [];
+let particles = [];
+let walls = [];
+let paused = false;
+let timeScale = 1;
+let nextId = 1;
+let stats = { kills: 0, births: 0, starve: 0 };
+let popHistory = [];
+let avgHistory = [];
+
+// Tool
+let currentTool = 'spawn';
+
+// ==================== CELL ====================
+function createGenome(random = true) {
+  if (!random) return [128, 128, 128, 128, 128, 128];
+  return [
+    Math.floor(Math.random() * 256), // R body
+    Math.floor(Math.random() * 256), // G body
+    Math.floor(Math.random() * 256), // B body
+    Math.floor(Math.random() * 256), // R nucleus
+    Math.floor(Math.random() * 256), // G nucleus
+    Math.floor(Math.random() * 256), // B nucleus
+  ];
+}
+
+function genomeColor(g) {
+  return `rgb(${g[0]},${g[1]},${g[2]})`;
+}
+function nucleusColor(g) {
+  return `rgb(${g[3]},${g[4]},${g[5]})`;
+}
+
+function createCell(x, y, genome, parent) {
+  const g = genome || createGenome(true);
+  const strength = g[0]; // 0-255
+  const armor = g[1];
+  const regen = g[2];
+  const courage = g[3];
+  const sociability = g[4];
+  const greed = g[5];
+
+  const mass = 1 + armor / 255 * 2;
+  const maxHp = 80 + armor * 0.5;
+  const maxEnergy = 120 + strength * 0.3;
+  const speed = (280 - armor * 0.6) / mass;
+  const attackCooldown = 0.3 + (strength / 255) * 2.0; // seconds
+  const attackDamage = 5 + (strength / 255) * 45;
+  const knockbackForce = 50 + strength * 0.15;
+  const regenRate = regen / 255 * 12; // hp per second
+  const energyConsumption = 2 + regen / 255 * 6 + (regen > 180 ? 4 : 0);
+
+  const cell = {
+    id: nextId++,
+    x, y,
+    vx: 0, vy: 0,
+    radius: settings.cellBaseSize,
+    genome: [...g],
+    strength, armor, regen,
+    courage, sociability, greed,
+    mass,
+    hp: maxHp, maxHp,
+    energy: maxEnergy * 0.8, maxEnergy,
+    speed,
+    attackDamage,
+    attackCooldown,
+    attackTimer: 0,
+    knockbackForce,
+    regenRate,
+    energyConsumption,
+    regenCombatNerf: 0, // timer
+    alive: true,
+    age: 0,
+    parent: parent || null,
+    children: [],
+    target: null,
+    teammate: null,
+    task: 'idle', // idle, forage, hunt, retreat, teamup
+    taskTarget: null,
+    wanderAngle: Math.random() * Math.PI * 2,
+    wanderTimer: 0,
+    heartbeatTimer: Math.random() * 3,
+    hardHp: 0, // unrecoverable damage
+  };
+  return cell;
+}
+
+// ==================== PLANT ====================
+function createPlant(x, y) {
+  return {
+    x, y,
+    radius: 4 + Math.random() * 3,
+    energy: settings.plantEnergy * (0.5 + Math.random() * 0.5),
+    alive: true,
+    age: 0,
+  };
+}
+
+// ==================== PARTICLES ====================
+function spawnParticles(x, y, count, color, life, speed) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = speed * (0.3 + Math.random() * 0.7);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: life * (0.5 + Math.random() * 0.5),
+      maxLife: life,
+      color,
+      size: 1 + Math.random() * 2,
+    });
+  }
+}
+
+function spawnDeathParticles(cell) {
+  const c = genomeColor(cell.genome);
+  spawnParticles(cell.x, cell.y, 25, c, 2.5, 80);
+  // Food bits
+  const foodCount = Math.floor(cell.energy / 15);
+  for (let i = 0; i < foodCount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = cell.radius + Math.random() * 30;
+    plants.push(createPlant(
+      cell.x + Math.cos(angle) * dist,
+      cell.y + Math.sin(angle) * dist
+    ));
+    // Override energy based on cell's remaining energy
+    plants[plants.length - 1].energy = 5 + cell.energy / foodCount * (0.5 + Math.random() * 0.5);
+  }
+}
+
+// ==================== AI ====================
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function findNearest(cell, list, maxDist) {
+  let best = null, bestD = maxDist;
+  for (const t of list) {
+    if (t === cell || !t.alive) continue;
+    const d = dist(cell, t);
+    if (d < bestD) { bestD = d; best = t; }
+  }
+  return best;
+}
+
+function genomeSimilarity(a, b) {
+  let diff = 0;
+  for (let i = 0; i < 6; i++) diff += Math.abs(a[i] - b[i]);
+  return 1 - diff / (255 * 6);
+}
+
+function updateAI(cell, dt) {
+  const sightRange = 300;
+  const nearbyCells = cells.filter(c => c !== cell && c.alive && dist(cell, c) < sightRange);
+  const nearbyPlants = plants.filter(p => p.alive && dist(cell, p) < sightRange);
+  
+  // Check if attacked recently
+  if (cell.regenCombatNerf > 0) cell.regenCombatNerf -= dt;
+  
+  const isHungry = cell.energy < cell.maxEnergy * 0.5;
+  const isVeryHungry = cell.energy < cell.maxEnergy * 0.2;
+  const isDamaged = cell.hp < cell.maxHp * 0.5;
+  const isCriticallyDamaged = cell.hp < cell.maxHp * 0.2;
+  
+  // Determine task priorities
+  // Priority 1: Retreat if critically damaged and not courageous
+  if (isCriticallyDamaged && cell.courage < 180) {
+    cell.task = 'retreat';
+    cell.taskTarget = findNearest(cell, nearbyCells.filter(c => c.target === cell || (c.task === 'hunt' && c.taskTarget === cell)), sightRange);
+    return;
+  }
+  
+  // Priority 2: Fight back if someone is attacking us
+  const attacker = nearbyCells.find(c => c.target === cell && dist(c, cell) < 50);
+  if (attacker) {
+    cell.task = 'hunt';
+    cell.taskTarget = attacker;
+    return;
+  }
+  
+  // Priority 3: Hunt if courageous and hungry
+  if (cell.courage > 80 && (isHungry || cell.greed < 100)) {
+    const prey = findNearest(cell, nearbyCells, sightRange);
+    if (prey && cell.strength > prey.armor * 0.6) {
+      // Hunt weaker or similar cells
+      cell.task = 'hunt';
+      cell.taskTarget = prey;
+      return;
+    }
+  }
+  
+  // Priority 4: Forage
+  if (isHungry || cell.greed < 150) {
+    if (nearbyPlants.length > 0) {
+      cell.task = 'forage';
+      cell.taskTarget = findNearest(cell, nearbyPlants, sightRange);
+      return;
+    }
+    // Hunt if no plants and hungry
+    if (isVeryHungry) {
+      const prey = findNearest(cell, nearbyCells, sightRange);
+      if (prey) {
+        cell.task = 'hunt';
+        cell.taskTarget = prey;
+        return;
+      }
+    }
+  }
+  
+  // Priority 5: Team up (sociability)
+  if (cell.sociability > 100 && !cell.teammate) {
+    const friend = nearbyCells.find(c => {
+      if (!c.alive || c === cell) return false;
+      const sim = genomeSimilarity(cell.genome, c.genome);
+      return c.target !== cell && sim > 0.5 && cell.sociability / 255 * c.sociability / 255 > 0.2;
+    });
+    if (friend) {
+      cell.teammate = friend;
+      cell.task = 'teamup';
+      cell.taskTarget = friend;
+      return;
+    }
+  }
+  
+  // Priority 6: Follow teammate
+  if (cell.teammate && cell.teammate.alive) {
+    cell.task = 'teamup';
+    cell.taskTarget = cell.teammate;
+    // Copy teammate's hunt target
+    if (cell.teammate.task === 'hunt' && cell.teammate.taskTarget && Math.random() < cell.sociability / 255) {
+      cell.task = 'hunt';
+      cell.taskTarget = cell.teammate.taskTarget;
+    }
+    return;
+  }
+  
+  // Priority 7: Reproduce
+  if (cell.energy > cell.maxEnergy * 0.65 && cell.hp > cell.maxHp * 0.5) {
+    const reproChance = (0.001 + (1 - cell.greed / 255) * 0.005) * dt;
+    if (Math.random() < reproChance) {
+      reproduce(cell);
+    }
+  }
+  
+  // Default: idle
+  cell.task = 'idle';
+  cell.taskTarget = null;
+}
+
+function reproduce(cell) {
+  if (cell.energy < cell.maxEnergy * 0.6) return;
+  cell.energy -= cell.maxEnergy * 0.6;
+  
+  // Mutation strength: better condition = less mutation
+  const condition = (cell.hp / cell.maxHp + cell.energy / cell.maxEnergy) / 2;
+  const mutStrength = Math.floor((1 - condition) * 30 + 5);
+  
+  const childGenome = cell.genome.map(b => {
+    const mut = Math.floor((Math.random() - 0.5) * 2 * mutStrength);
+    return Math.max(0, Math.min(255, b + mut));
+  });
+  
+  const angle = Math.random() * Math.PI * 2;
+  const dist = cell.radius * 3;
+  const child = createCell(
+    cell.x + Math.cos(angle) * dist,
+    cell.y + Math.sin(angle) * dist,
+    childGenome,
+    cell.id
+  );
+  child.energy = child.maxEnergy * 0.3;
+  cell.children.push(child.id);
+  cells.push(child);
+  stats.births++;
+  spawnParticles(child.x, child.y, 8, '#fff', 0.8, 30);
+}
+
+// ==================== MOVEMENT ====================
+function updateMovement(cell, dt) {
+  if (!cell.alive) return;
+  
+  let tx = cell.x, ty = cell.y;
+  let moving = false;
+  
+  switch (cell.task) {
+    case 'hunt':
+      if (cell.taskTarget && cell.taskTarget.alive) {
+        tx = cell.taskTarget.x;
+        ty = cell.taskTarget.y;
+        cell.target = cell.taskTarget;
+        moving = true;
+      }
+      break;
+    case 'forage':
+      if (cell.taskTarget && cell.taskTarget.alive) {
+        tx = cell.taskTarget.x;
+        ty = cell.taskTarget.y;
+        moving = true;
+      }
+      break;
+    case 'retreat': {
+      const threat = cell.taskTarget;
+      if (threat && threat.alive) {
+        const dx = cell.x - threat.x, dy = cell.y - threat.y;
+        const d = Math.hypot(dx, dy) || 1;
+        tx = cell.x + (dx / d) * 200;
+        ty = cell.y + (dy / d) * 200;
+        moving = true;
+      }
+      // Cowardly cells avoid living things
+      if (cell.courage < 60) {
+        for (const c of cells) {
+          if (c === cell || !c.alive) continue;
+          const d = dist(cell, c);
+          if (d < 100) {
+            const dx = cell.x - c.x, dy = cell.y - c.y;
+            const dd = d || 1;
+            tx += (dx / dd) * 50;
+            ty += (dy / dd) * 50;
+          }
+        }
+      }
+      break;
+    }
+    case 'teamup':
+      if (cell.taskTarget && cell.taskTarget.alive) {
+        const d = dist(cell, cell.taskTarget);
+        if (d > 40) {
+          tx = cell.taskTarget.x;
+          ty = cell.taskTarget.y;
+          moving = true;
+        }
+      }
+      break;
+    case 'idle':
+    default:
+      // Wander
+      cell.wanderTimer -= dt;
+      if (cell.wanderTimer <= 0) {
+        cell.wanderAngle += (Math.random() - 0.5) * 1.5;
+        cell.wanderTimer = 0.5 + Math.random() * 1.5;
+      }
+      tx = cell.x + Math.cos(cell.wanderAngle) * 100;
+      ty = cell.y + Math.sin(cell.wanderAngle) * 100;
+      moving = true;
+      break;
+  }
+  
+  if (moving) {
+    const dx = tx - cell.x, dy = ty - cell.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const accel = cell.speed * 3;
+    cell.vx += (dx / d) * accel * dt;
+    cell.vy += (dy / d) * accel * dt;
+  }
+  
+  // Speed limit
+  const spd = Math.hypot(cell.vx, cell.vy);
+  const maxSpd = cell.speed;
+  if (spd > maxSpd) {
+    cell.vx = (cell.vx / spd) * maxSpd;
+    cell.vy = (cell.vy / spd) * maxSpd;
+  }
+  
+  // Friction
+  cell.vx *= 0.95;
+  cell.vy *= 0.95;
+  
+  // Apply velocity
+  cell.x += cell.vx * dt;
+  cell.y += cell.vy * dt;
+  
+  // Wall bounds
+  cell.x = Math.max(cell.radius, Math.min(worldW - cell.radius, cell.x));
+  cell.y = Math.max(cell.radius, Math.min(worldH - cell.radius, cell.y));
+  
+  // Obstacle avoidance
+  for (const wall of walls) {
+    const dx = cell.x - wall.x, dy = cell.y - wall.y;
+    const d = Math.hypot(dx, dy);
+    const minDist = cell.radius + wall.radius;
+    if (d < minDist && d > 0) {
+      cell.x = wall.x + (dx / d) * minDist;
+      cell.y = wall.y + (dy / d) * minDist;
+    }
+  }
+}
+
+// ==================== COMBAT ====================
+function updateCombat(cell, dt) {
+  if (!cell.alive) return;
+  cell.attackTimer -= dt;
+  
+  if (cell.task !== 'hunt' || !cell.taskTarget || !cell.taskTarget.alive) {
+    cell.target = null;
+    return;
+  }
+  
+  const target = cell.taskTarget;
+  const d = dist(cell, target);
+  
+  if (d < cell.radius + target.radius + 5 && cell.attackTimer <= 0) {
+    // Attack!
+    cell.attackTimer = cell.attackCooldown;
+    cell.regenCombatNerf = 2;
+    target.regenCombatNerf = 2;
+    
+    // Calculate damage
+    let dmg = cell.attackDamage * settings.dmgMult;
+    const penetration = cell.strength / 255;
+    const defense = target.armor / 255;
+    
+    // Armor reduction
+    dmg *= (1 - defense * 0.5);
+    
+    // Crit check
+    const critChance = settings.critChanceBase * (1 + penetration) * (1 - defense * 0.7);
+    let isCrit = Math.random() < critChance;
+    
+    // Full block
+    if (defense > 0.9 && penetration < 0.3) {
+      isCrit = false;
+      dmg *= 0.3;
+    }
+    
+    if (isCrit) {
+      dmg *= 2.5;
+      // Hard damage
+      if (settings.hardDmgEnabled) {
+        const hardDmg = dmg * 0.3;
+        target.hardHp = Math.min(target.maxHp * 0.6, target.hardHp + hardDmg);
+      }
+    }
+    
+    target.hp -= dmg;
+    
+    // Knockback
+    const dx = target.x - cell.x, dy = target.y - cell.y;
+    const dd = Math.hypot(dx, dy) || 1;
+    let kb = cell.knockbackForce * (1 + (isCrit ? 1 : 0));
+    kb /= target.mass;
+    target.vx += (dx / dd) * kb;
+    target.vy += (dy / dd) * kb;
+    
+    // Particles
+    if (isCrit) {
+      spawnParticles(target.x, target.y, 12, '#ff4444', 0.6, 60);
+    } else {
+      spawnParticles(target.x, target.y, 5, '#ffaa44', 0.3, 30);
+    }
+    
+    // Fight back
+    if (target.task !== 'hunt' || target.taskTarget !== cell) {
+      target.task = 'hunt';
+      target.taskTarget = cell;
+      target.target = cell;
+    }
+    
+    // Death
+    if (target.hp <= 0) {
+      target.alive = false;
+      stats.kills++;
+      spawnDeathParticles(target);
+    }
+  }
+}
+
+// ==================== ECONOMY ====================
+function updateEconomy(cell, dt) {
+  if (!cell.alive) return;
+  
+  // Energy consumption
+  let consumption = cell.energyConsumption * dt;
+  if (cell.regenCombatNerf > 0) consumption *= 1.5;
+  cell.energy -= consumption;
+  
+  // Regeneration
+  if (cell.hp < cell.maxHp - cell.hardHp && cell.regenCombatNerf <= 0) {
+    const healRate = cell.regenRate;
+    const healCost = healRate * 0.8 * dt;
+    if (cell.energy > healCost) {
+      const heal = Math.min(healRate * dt, cell.maxHp - cell.hardHp - cell.hp);
+      cell.hp += heal;
+      cell.energy -= healCost;
+    }
+  }
+  
+  // Regen combat nerf timing (higher regen = faster recovery from combat)
+  if (cell.regenCombatNerf > 0) {
+    const recoverySpeed = 1 + cell.regen / 255;
+    // already decremented in updateAI
+  }
+  
+  // Eat plants
+  if (cell.task === 'forage' && cell.taskTarget && cell.taskTarget.alive) {
+    const target = cell.taskTarget;
+    if (dist(cell, target) < cell.radius + target.radius) {
+      cell.energy = Math.min(cell.maxEnergy, cell.energy + target.energy);
+      target.alive = false;
+      spawnParticles(target.x, target.y, 4, '#44ff44', 0.3, 15);
+      cell.taskTarget = null;
+    }
+  }
+  
+  // Death by starvation
+  if (cell.energy <= 0) {
+    cell.hp -= 15 * dt;
+    if (cell.hp <= 0) {
+      cell.alive = false;
+      stats.starve++;
+      spawnDeathParticles(cell);
+    }
+  }
+  
+  cell.age += dt;
+}
+
+// ==================== SPAWN ====================
+let plantSpawnAccum = 0;
+function spawnPlants(dt) {
+  plantSpawnAccum += settings.plantSpawnRate * dt;
+  while (plantSpawnAccum >= 1) {
+    plantSpawnAccum -= 1;
+    plants.push(createPlant(
+      Math.random() * worldW,
+      Math.random() * worldH
+    ));
+  }
+}
+
+function spawnInitial() {
+  cells = [];
+  plants = [];
+  particles = [];
+  walls = [];
+  stats = { kills: 0, births: 0, starve: 0 };
+  popHistory = [];
+  avgHistory = [];
+  nextId = 1;
+  
+  for (let i = 0; i < settings.initCells; i++) {
+    cells.push(createCell(
+      worldW / 2 + (Math.random() - 0.5) * settings.spawnRadius,
+      worldH / 2 + (Math.random() - 0.5) * settings.spawnRadius
+    ));
+  }
+  
+  // Initial plants
+  for (let i = 0; i < 50; i++) {
+    plants.push(createPlant(Math.random() * worldW, Math.random() * worldH));
+  }
+}
+
+// ==================== UPDATE ====================
+let lastTime = 0;
+let statsTimer = 0;
+
+function update(dt) {
+  if (paused) return;
+  dt *= timeScale;
+  dt = Math.min(dt, 0.05); // cap
+  
+  spawnPlants(dt);
+  
+  for (const cell of cells) {
+    if (!cell.alive) continue;
+    updateAI(cell, dt);
+    updateMovement(cell, dt);
+    updateCombat(cell, dt);
+    updateEconomy(cell, dt);
+  }
+  
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.97;
+    p.vy *= 0.97;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  
+  // Clean up dead
+  cells = cells.filter(c => c.alive);
+  plants = plants.filter(p => p.alive);
+  
+  // Cap particles
+  if (particles.length > 3000) particles.splice(0, particles.length - 3000);
+  
+  // Stats history
+  statsTimer += dt;
+  if (statsTimer > 1) {
+    statsTimer = 0;
+    popHistory.push(cells.length);
+    if (popHistory.length > 300) popHistory.shift();
+    const avgStr = cells.length ? cells.reduce((s, c) => s + c.strength, 0) / cells.length : 0;
+    const avgArm = cells.length ? cells.reduce((s, c) => s + c.armor, 0) / cells.length : 0;
+    const avgReg = cells.length ? cells.reduce((s, c) => s + c.regen, 0) / cells.length : 0;
+    avgHistory.push({ str: avgStr, arm: avgArm, reg: avgReg });
+    if (avgHistory.length > 300) avgHistory.shift();
+  }
+}
+
+// ==================== RENDER ====================
+function worldToScreen(wx, wy) {
+  return [
+    (wx - cam.x) * cam.zoom + W / 2,
+    (wy - cam.y) * cam.zoom + H / 2
+  ];
+}
+
+function screenToWorld(sx, sy) {
+  return [
+    (sx - W / 2) / cam.zoom + cam.x,
+    (sy - H / 2) / cam.zoom + cam.y
+  ];
+}
+
+function render() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  
+  // Smooth zoom
+  cam.zoom += (targetZoom - cam.zoom) * 0.15;
+  
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.scale(cam.zoom, cam.zoom);
+  ctx.translate(-cam.x, -cam.y);
+  
+  // World border
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(0, 0, worldW, worldH);
+  
+  // Grid (subtle)
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 0.5;
+  const gridSize = 100;
+  for (let x = 0; x <= worldW; x += gridSize) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, worldH); ctx.stroke();
+  }
+  for (let y = 0; y <= worldH; y += gridSize) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(worldW, y); ctx.stroke();
+  }
+  
+  // Plants
+  for (const p of plants) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(50,${150 + Math.floor(p.energy)},50,0.8)`;
+    ctx.fill();
+  }
+  
+  // Walls
+  for (const w of walls) {
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, w.radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#555';
+    ctx.fill();
+    ctx.strokeStyle = '#777';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  
+  // Cells
+  for (const cell of cells) {
+    if (!cell.alive) continue;
+    
+    // Pulse (heartbeat)
+    cell.heartbeatTimer -= 0.016;
+    let pulse = 0;
+    if (cell.heartbeatTimer <= 0) {
+      cell.heartbeatTimer = 2 + Math.random() * 2;
+      pulse = 1;
+      // Heartbeat particle
+      if (Math.random() < 0.3) {
+        spawnParticles(cell.x, cell.y, 1, 'rgba(255,255,255,0.3)', 0.5, 10);
+      }
+    }
+    
+    const r = cell.radius + pulse * 1.5;
+    
+    // Body
+    ctx.beginPath();
+    ctx.arc(cell.x, cell.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = genomeColor(cell.genome);
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    
+    // White outline
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    
+    // Nucleus
+    const nr = r * 0.35;
+    ctx.beginPath();
+    ctx.arc(cell.x, cell.y, nr, 0, Math.PI * 2);
+    ctx.fillStyle = nucleusColor(cell.genome);
+    ctx.globalAlpha = 0.9;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    
+    // HP bar
+    const barW = r * 2.5;
+    const barH = 3;
+    const barX = cell.x - barW / 2;
+    const barY = cell.y - r - 8;
+    const hpFrac = Math.max(0, cell.hp / cell.maxHp);
+    const hardFrac = cell.hardHp / cell.maxHp;
+    
+    ctx.fillStyle = '#333';
+    ctx.fillRect(barX, barY, barW, barH);
+    
+    // Hard zone (right side, dark red)
+    if (hardFrac > 0) {
+      ctx.fillStyle = '#8b0000';
+      ctx.fillRect(barX + barW * (1 - hardFrac), barY, barW * hardFrac, barH);
+    }
+    
+    // HP fill
+    const hpColor = hpFrac > 0.5 ? '#4a4' : hpFrac > 0.25 ? '#aa4' : '#a44';
+    ctx.fillStyle = hpColor;
+    ctx.fillRect(barX, barY, barW * hpFrac, barH);
+    
+    // Line to target
+    if (cell.target && cell.target.alive && cell.task === 'hunt') {
+      ctx.beginPath();
+      ctx.moveTo(cell.x, cell.y);
+      ctx.lineTo(cell.target.x, cell.target.y);
+      ctx.strokeStyle = 'rgba(255,60,60,0.2)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    
+    // Line to teammate
+    if (cell.teammate && cell.teammate.alive) {
+      ctx.beginPath();
+      ctx.moveTo(cell.x, cell.y);
+      ctx.lineTo(cell.teammate.x, cell.teammate.y);
+      ctx.strokeStyle = 'rgba(60,60,255,0.15)';
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    
+    // Route visualization
+    if (cell.taskTarget && cell.taskTarget.alive && (cell.task === 'forage' || cell.task === 'hunt')) {
+      ctx.beginPath();
+      ctx.moveTo(cell.x, cell.y);
+      ctx.lineTo(cell.taskTarget.x, cell.taskTarget.y);
+      ctx.strokeStyle = cell.task === 'hunt' ? 'rgba(255,100,50,0.15)' : 'rgba(50,255,50,0.15)';
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([2, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+  
+  // Particles
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  
+  ctx.restore();
+  
+  // Update stats display
+  document.getElementById('stats').textContent = `Cells: ${cells.length} | Plants: ${plants.length}`;
+}
+
+// ==================== HOVER PANEL ====================
+const hoverPanel = document.getElementById('hoverPanel');
+let hoveredCell = null;
+
+canvas.addEventListener('mousemove', (e) => {
+  const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+  hoveredCell = null;
+  
+  for (const cell of cells) {
+    if (dist({ x: wx, y: wy }, cell) < cell.radius + 10) {
+      hoveredCell = cell;
+      break;
+    }
+  }
+  
+  if (hoveredCell) {
+    const c = hoveredCell;
+    const taskNames = { idle: 'Бездействие', forage: 'Сбор еды', hunt: 'Охота', retreat: 'Отступление', teamup: 'Группировка' };
+    
+    const cdSec = c.attackCooldown.toFixed(2);
+    const dps = c.attackTimer > 0 ? 'Перезарядка' : 'Готов';
+    const critPct = (settings.critChanceBase * (1 + c.strength / 255) * (1 - c.armor / 255 * 0.7) * 100).toFixed(1);
+    const hungerTime = c.energyConsumption > 0 ? (c.energy / c.energyConsumption).toFixed(1) : '∞';
+    
+    let parentInfo = '';
+    if (c.parent) parentInfo = `<div>Родитель: #${c.parent}</div>`;
+    
+    let teammateInfo = '';
+    if (c.teammate && c.teammate.alive) {
+      teammateInfo = `<div>Товарищ: #${c.teammate.id}</div>`;
+    }
+    
+    hoverPanel.innerHTML = `
+      <div class="section-title">Клетка #${c.id}</div>
+      <div class="genome-bar">
+        ${c.genome.slice(0, 3).map((v, i) => `<div style="background:${['rgb('+v+',0,0)','rgb(0,'+v+',0)','rgb(0,0,'+v+')'][i]}"></div>`).join('')}
+        ${c.genome.slice(3, 6).map((v, i) => `<div style="background:${['rgb('+v+',0,0)','rgb(0,'+v+',0)','rgb(0,0,'+v+')'][i]};opacity:0.7"></div>`).join('')}
+      </div>
+      <div class="stat-row"><span>❤️ HP:</span><span>${c.hp.toFixed(1)} / ${c.maxHp.toFixed(0)}</span></div>
+      <div class="hp-bar" style="position:relative">
+        <div class="hp-fill" style="width:${(c.hp/c.maxHp*100).toFixed(1)}%;background:${c.hp/c.maxHp>0.5?'#4a4':'#a44'}"></div>
+        ${c.hardHp > 0 ? `<div class="hard-zone" style="width:${(c.hardHp/c.maxHp*100).toFixed(1)}%"></div>` : ''}
+      </div>
+      <div class="stat-row"><span>⚡ Энергия:</span><span>${c.energy.toFixed(1)} / ${c.maxEnergy.toFixed(0)}</span></div>
+      <div class="stat-row"><span>💀 Смерть от голода:</span><span>${hungerTime}с</span></div>
+      <div class="section-title">Характеристики</div>
+      <div class="stat-row"><span>⚔️ Сила:</span><span>${c.strength}</span></div>
+      <div class="stat-row"><span>🛡️ Броня:</span><span>${c.armor}</span></div>
+      <div class="stat-row"><span>💚 Реген:</span><span>${c.regen}</span></div>
+      <div class="stat-row"><span>Урон:</span><span>${c.attackDamage.toFixed(1)}</span></div>
+      <div class="stat-row"><span>КД:</span><span>${cdSec}с (${dps})</span></div>
+      <div class="stat-row"><span>Крит шанс:</span><span>${critPct}%</span></div>
+      <div class="stat-row"><span>Откидывание:</span><span>${c.knockbackForce.toFixed(0)}</span></div>
+      <div class="stat-row"><span>Масса:</span><span>${c.mass.toFixed(2)}</span></div>
+      <div class="section-title">Ядро (мозг)</div>
+      <div class="stat-row"><span>🔴 Смелость:</span><span>${c.courage}</span></div>
+      <div class="stat-row"><span>🔵 Стайность:</span><span>${c.sociability}</span></div>
+      <div class="stat-row"><span>🟢 Прожорливость:</span><span>${c.greed}</span></div>
+      <div class="section-title">Поведение</div>
+      <div class="stat-row"><span>Задача:</span><span>${taskNames[c.task] || c.task}</span></div>
+      <div class="stat-row"><span>Возраст:</span><span>${c.age.toFixed(1)}с</span></div>
+      ${parentInfo}
+      ${teammateInfo}
+    `;
+    
+    let px = e.clientX + 15;
+    let py = e.clientY + 15;
+    if (px + 280 > W) px = e.clientX - 290;
+    if (py + 400 > H) py = e.clientY - 400;
+    
+    hoverPanel.style.left = px + 'px';
+    hoverPanel.style.top = py + 'px';
+    hoverPanel.style.display = 'block';
+  } else {
+    hoverPanel.style.display = 'none';
+  }
+});
+
+// ==================== INPUT ====================
+let isDragging = false;
+let dragStart = { x: 0, y: 0 };
+let camStart = { x: 0, y: 0 };
+
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+    isDragging = true;
+    dragStart = { x: e.clientX, y: e.clientY };
+    camStart = { x: cam.x, y: cam.y };
+    return;
+  }
+  if (e.button === 2) {
+    isDragging = true;
+    dragStart = { x: e.clientX, y: e.clientY };
+    camStart = { x: cam.x, y: cam.y };
+    return;
+  }
+  if (e.button === 0) {
+    const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+    
+    switch (currentTool) {
+      case 'spawn':
+        cells.push(createCell(wx, wy));
+        break;
+      case 'plant':
+        for (let i = 0; i < 5; i++) {
+          plants.push(createPlant(
+            wx + (Math.random() - 0.5) * 30,
+            wy + (Math.random() - 0.5) * 30
+          ));
+        }
+        break;
+      case 'wall':
+        walls.push({ x: wx, y: wy, radius: 15 });
+        break;
+      case 'erase':
+        // Remove nearest cell or wall
+        let bestDist = 30, bestObj = null, bestType = '';
+        for (const c of cells) {
+          const d = dist({ x: wx, y: wy }, c);
+          if (d < bestDist) { bestDist = d; bestObj = c; bestType = 'cell'; }
+        }
+        for (const w of walls) {
+          const d = dist({ x: wx, y: wy }, w);
+          if (d < bestDist) { bestDist = d; bestObj = w; bestType = 'wall'; }
+        }
+        if (bestType === 'cell') {
+          bestObj.alive = false;
+          spawnDeathParticles(bestObj);
+        } else if (bestType === 'wall') {
+          walls.splice(walls.indexOf(bestObj), 1);
+        }
+        break;
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (isDragging) {
+    cam.x = camStart.x - (e.clientX - dragStart.x) / cam.zoom;
+    cam.y = camStart.y - (e.clientY - dragStart.y) / cam.zoom;
+  }
+});
+
+canvas.addEventListener('mouseup', () => { isDragging = false; });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  targetZoom = Math.max(0.1, Math.min(5, targetZoom * delta));
+}, { passive: false });
+
+// ==================== UI ====================
+document.getElementById('btnPause').onclick = () => { paused = !paused; };
+document.getElementById('btnPlay').onclick = () => { paused = false; };
+
+const speedSlider = document.getElementById('speedSlider');
+speedSlider.oninput = () => {
+  timeScale = parseFloat(speedSlider.value);
+  document.getElementById('speedVal').textContent = timeScale.toFixed(1) + 'x';
+};
+
+// Tool buttons
+const toolBtns = { btnSpawn: 'spawn', btnPlant: 'plant', btnWall: 'wall', btnErase: 'erase' };
+const toolNames = { spawn: 'Spawn Cell (click)', plant: 'Plant Food (click)', wall: 'Place Wall (click)', erase: 'Erase (click)' };
+Object.entries(toolBtns).forEach(([id, tool]) => {
+  document.getElementById(id).onclick = () => {
+    currentTool = tool;
+    Object.keys(toolBtns).forEach(b => document.getElementById(b).classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.getElementById('toolIndicator').textContent = 'Tool: ' + toolNames[id];
+  };
+});
+
+// Settings
+document.getElementById('btnSettings').onclick = () => {
+  const p = document.getElementById('settingsPanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('statsPanel').style.display = 'none';
+};
+
+document.getElementById('btnStats').onclick = () => {
+  const p = document.getElementById('statsPanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  document.getElementById('settingsPanel').style.display = 'none';
+};
+
+// Settings bindings
+function bindSlider(id, valId, setter) {
+  const el = document.getElementById(id);
+  const valEl = document.getElementById(valId);
+  el.oninput = () => {
+    const v = parseFloat(el.value);
+    valEl.textContent = v;
+    setter(v);
+  };
+}
+
+bindSlider('setSpawnRadius', 'spawnRadVal', v => settings.spawnRadius = v);
+bindSlider('setPlantRate', 'plantRateVal', v => settings.plantSpawnRate = v);
+bindSlider('setPlantEnergy', 'plantEnergyVal', v => settings.plantEnergy = v);
+bindSlider('setDmgMult', 'dmgMultVal', v => settings.dmgMult = v);
+bindSlider('setCritChance', 'critVal', v => settings.critChanceBase = v);
+bindSlider('setCellSize', 'cellSizeVal', v => settings.cellBaseSize = v);
+
+document.getElementById('setHardDmg').onchange = function() { settings.hardDmgEnabled = this.checked; };
+document.getElementById('setRandomSpawn').onchange = function() { settings.randomSpawn = this.checked; };
+
+document.getElementById('btnResetWorld').onclick = () => {
+  worldW = parseInt(document.getElementById('setWorldW').value) || 2000;
+  worldH = parseInt(document.getElementById('setWorldH').value) || 1500;
+  settings.initCells = parseInt(document.getElementById('setInitCells').value) || 30;
+  cam.x = worldW / 2;
+  cam.y = worldH / 2;
+  targetZoom = 1;
+  spawnInitial();
+};
+
+// ==================== STATS CHARTS ====================
+function drawStatsPanel() {
+  if (document.getElementById('statsPanel').style.display === 'none') return;
+  
+  document.getElementById('statCells').textContent = cells.length;
+  document.getElementById('statPlants').textContent = plants.length;
+  document.getElementById('statKills').textContent = stats.kills;
+  document.getElementById('statBirths').textContent = stats.births;
+  document.getElementById('statStarve').textContent = stats.starve;
+  
+  // Population chart
+  const popCanvas = document.getElementById('popChart');
+  const pctx = popCanvas.getContext('2d');
+  pctx.fillStyle = '#111';
+  pctx.fillRect(0, 0, 300, 100);
+  
+  if (popHistory.length > 1) {
+    const max = Math.max(...popHistory, 1);
+    pctx.beginPath();
+    pctx.strokeStyle = '#4a4';
+    pctx.lineWidth = 1.5;
+    popHistory.forEach((v, i) => {
+      const x = (i / (popHistory.length - 1)) * 300;
+      const y = 100 - (v / max) * 90;
+      if (i === 0) pctx.moveTo(x, y);
+      else pctx.lineTo(x, y);
+    });
+    pctx.stroke();
+  }
+  
+  // Avg stats chart
+  const statCanvas = document.getElementById('statChart');
+  const sctx = statCanvas.getContext('2d');
+  sctx.fillStyle = '#111';
+  sctx.fillRect(0, 0, 300, 100);
+  
+  if (avgHistory.length > 1) {
+    const drawLine = (key, color) => {
+      sctx.beginPath();
+      sctx.strokeStyle = color;
+      sctx.lineWidth = 1.5;
+      avgHistory.forEach((v, i) => {
+        const x = (i / (avgHistory.length - 1)) * 300;
+        const y = 100 - (v[key] / 255) * 90;
+        if (i === 0) sctx.moveTo(x, y);
+        else sctx.lineTo(x, y);
+      });
+      sctx.stroke();
+    };
+    drawLine('str', '#f44');
+    drawLine('arm', '#44f');
+    drawLine('reg', '#4f4');
+    
+    // Legend
+    sctx.font = '10px sans-serif';
+    sctx.fillStyle = '#f44'; sctx.fillText('Сила', 5, 12);
+    sctx.fillStyle = '#44f'; sctx.fillText('Броня', 40, 12);
+    sctx.fillStyle = '#4f4'; sctx.fillText('Реген', 80, 12);
+  }
+}
+
+// ==================== MAIN LOOP ====================
+function gameLoop(time) {
+  const dt = lastTime ? (time - lastTime) / 1000 : 0.016;
+  lastTime = time;
+  
+  update(dt);
+  render();
+  drawStatsPanel();
+  
+  requestAnimationFrame(gameLoop);
+}
+
+// Init
+cam.x = worldW / 2;
+cam.y = worldH / 2;
+spawnInitial();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
