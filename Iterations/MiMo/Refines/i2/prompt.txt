@@ -1,0 +1,87 @@
+# Refine i2 - Prompt and Changes
+
+## Original Request (User Prompt)
+
+Создай рефайн 2, с этими изменениями:
+
+1. Исправить баг с появляением еды за границами карты куда клетки не могут попасть и из-за этого багуются
+2. В целом улучшить ИИ клетки так чтобы она не пыталась вечно достать недоступную еду которая за стеной, границей карты итд, а отменяла эту задачу, сейчас клетки иногда просто от факта существования стены рядом начинают люто баговаться и танцевать на месте
+3. Пусть то инфо-меню появляющееся при наведении на клетку обновляется само а не только при движении мыши
+
+## Implemented Changes
+
+### 1. Fix: Food spawning outside map bounds
+
+**Problem:** Plants were spawning at random positions including outside the world boundaries where cells couldn't reach them, causing AI bugs.
+
+**Solution:** Modified `spawnPlants()` and `spawnInitial()` to spawn plants only within valid world bounds with a margin:
+
+```javascript
+// Before:
+plants.push(createPlant(Math.random() * worldW, Math.random() * worldH));
+
+// After:
+const margin = 20;
+const px = margin + Math.random() * (worldW - margin * 2);
+const py = margin + Math.random() * (worldH - margin * 2);
+plants.push(createPlant(px, py));
+```
+
+### 2. Fix: AI trying to reach unreachable food
+
+**Problem:** Cells would constantly try to reach food/targets that were blocked by walls or outside boundaries, causing them to "dance" in place or get stuck.
+
+**Solution:** 
+- Added new helper function `isPositionReachable(cell, tx, ty)` that checks if a target position is reachable by verifying:
+  - Position is within world bounds (with cell radius margin)
+  - Position is not blocked by any walls (with clearance margin)
+  
+- Modified `updateAI()` to check reachability before assigning food/hunt targets:
+  - If food/prey is unreachable, the cell cancels the task and goes to 'idle' instead
+  - This prevents cells from getting stuck trying to reach impossible targets
+
+```javascript
+function isPositionReachable(cell, tx, ty) {
+  const borderMargin = cell.radius + 5;
+  // Check world bounds
+  if (tx < borderMargin || tx > worldW - borderMargin || 
+      ty < borderMargin || ty > worldH - borderMargin) {
+    return false;
+  }
+  // Check wall collisions
+  for (const w of walls) {
+    const minD = cell.radius + w.radius + 10;
+    if (Math.hypot(tx - w.x, ty - w.y) < minD) {
+      return false;
+    }
+  }
+  return true;
+}
+```
+
+### 3. Feature: Auto-update hover panel every frame
+
+**Problem:** The info panel showing cell statistics only updated when the mouse moved, so dynamic values (HP, energy, age, etc.) wouldn't refresh while hovering over a stationary cell.
+
+**Solution:**
+- Extracted hover panel logic into a reusable `updateHoverPanel(mouseX, mouseY)` function
+- Track last mouse position with `lastMouseX` and `lastMouseY` variables
+- Call `updateHoverPanel()` in the main game loop every frame when mouse has been positioned
+- This ensures real-time updates of all cell statistics without requiring mouse movement
+
+```javascript
+// In gameLoop():
+if (lastMouseX > 0 && lastMouseY > 0) {
+  updateHoverPanel(lastMouseX, lastMouseY);
+}
+```
+
+## Files Modified
+
+- `/workspace/Iterations/MiMo/Refines/i2/i2.html` - Main simulation file with all fixes applied
+
+## Testing Recommendations
+
+1. **Test food spawning:** Watch for plants spawning - they should all appear within the visible world border
+2. **Test AI pathfinding:** Place walls near cells and observe that cells don't get stuck trying to reach food behind walls
+3. **Test hover panel:** Hover over a cell and keep mouse still - HP, energy, and age values should update in real-time
