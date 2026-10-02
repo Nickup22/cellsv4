@@ -32,6 +32,10 @@ button.active { background: #454552; border-color: #99a; color: #fff; }
   background: rgba(20,20,24,0.9); padding: 4px 14px; border-radius: 12px; font-size: 12px; border: 1px solid #444; max-width: 94vw;
 }
 
+/* режим обоев */
+body.wallpaper #topbar, body.wallpaper #toolIndicator, body.wallpaper .panel, body.wallpaper #hoverPanel { display: none !important; }
+body.wallpaper canvas#canvas { top: 0; height: 100vh; cursor: none; }
+
 /* hover */
 #hoverPanel {
   position: fixed; pointer-events: none; z-index: 200; display: none; width: 270px;
@@ -107,6 +111,7 @@ textarea { width: 100%; font-family: monospace; font-size: 11px; }
   <button id="btnErase" title="5">🗑 Ластик</button>
   <div class="sep"></div>
   <button id="btnFit" title="Показать весь мир (F)">⌖</button>
+  <button id="btnWallpaper" title="Режим обоев: без интерфейса, на весь экран (H, выход — H / Esc / двойной клик)">🖼</button>
   <button id="btnSettings" title="Настройки">⚙ Настройки</button>
   <button id="btnStats" title="Статистика">📊</button>
   <button id="btnSaves" title="Сохранить / загрузить мир">💾 Сейвы</button>
