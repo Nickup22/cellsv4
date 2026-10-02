@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Клетки 4 — итерация Claude</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; color: #ccc; touch-action: none; }
+canvas#canvas { position: fixed; top: 38px; left: 0; width: 100vw; height: calc(100vh - 38px); display: block; cursor: crosshair; touch-action: none; }
+
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0; height: 38px; z-index: 100;
+  background: rgba(20,20,24,0.96); border-bottom: 1px solid #333;
+  display: flex; align-items: center; gap: 6px; padding: 0 10px; font-size: 13px;
+  overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+}
+#topbar::-webkit-scrollbar { display: none; }
+button, select, input[type=number], textarea {
+  background: #26262c; color: #ccc; border: 1px solid #444; border-radius: 4px; padding: 3px 8px; font-size: 12px; font-family: inherit;
+}
+button { cursor: pointer; }
+button:hover { background: #34343c; }
+button.active { background: #454552; border-color: #99a; color: #fff; }
+.sep { width: 1px; height: 20px; background: #444; margin: 0 3px; flex-shrink: 0; }
+#topbar label { display: flex; align-items: center; gap: 4px; }
+#stats { margin-left: auto; font-size: 12px; opacity: 0.7; padding-left: 10px; }
+
+#toolIndicator {
+  position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 90; pointer-events: none;
+  background: rgba(20,20,24,0.9); padding: 4px 14px; border-radius: 12px; font-size: 12px; border: 1px solid #444; max-width: 94vw;
+}
+
+/* hover */
+#hoverPanel {
+  position: fixed; pointer-events: none; z-index: 200; display: none; width: 270px;
+  background: rgba(12,12,18,0.9); border: 1px solid #556; border-radius: 6px; padding: 8px 10px;
+  font-size: 11.5px; line-height: 1.45; backdrop-filter: blur(4px);
+}
+.section-title { color: #aab; font-weight: 600; margin-top: 5px; border-bottom: 1px solid #2c2c36; padding-bottom: 1px; }
+.stat-row { display: flex; justify-content: space-between; gap: 8px; }
+.stat-row span:last-child { text-align: right; color: #eee; }
+.hp-bar { position: relative; height: 5px; background: #2a2a2a; border-radius: 3px; overflow: hidden; margin: 2px 0 3px; }
+.hp-fill { height: 100%; }
+.hard-zone { position: absolute; right: 0; top: 0; height: 100%; background: #8b0000; }
+.genome-bar { display: flex; gap: 2px; margin: 4px 0; }
+.genome-bar div { flex: 1; height: 16px; border: 1px solid #666; border-radius: 2px; display: flex; align-items: center; justify-content: center; }
+.genome-bar i { font-style: normal; font-size: 9px; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+
+/* panels */
+.panel {
+  position: fixed; top: 44px; background: rgba(14,14,20,0.96); border: 1px solid #444; border-radius: 8px;
+  padding: 12px; z-index: 150; width: min(350px, 96vw); max-height: calc(100vh - 60px); overflow-y: auto; display: none; font-size: 12px;
+}
+#settingsPanel { right: 6px; }
+#statsPanel { left: 6px; }
+.panel h3 { font-size: 14px; margin-bottom: 8px; color: #ddd; display: flex; justify-content: space-between; align-items: center; }
+details { border-top: 1px solid #2a2a32; padding: 4px 0; }
+summary { cursor: pointer; padding: 4px 0; color: #ddd; font-weight: 600; }
+.srow { display: flex; align-items: center; gap: 6px; margin: 4px 0; justify-content: space-between; }
+.srow > span { flex: 1; }
+.srow input[type=range] { width: 120px; }
+.srow input[type=number] { width: 80px; }
+.srow em { font-style: normal; width: 38px; text-align: right; color: #9ac; }
+.srow select { max-width: 170px; }
+.genbox { margin: 8px 0; padding: 8px; background: #101018; border: 1px solid #2a2a36; border-radius: 6px; }
+.gtitle { color: #9ab; margin-bottom: 4px; }
+.btnrow { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0; }
+textarea { width: 100%; font-family: monospace; font-size: 11px; }
+.stline { display: flex; justify-content: space-between; padding: 1px 0; }
+.stline b { color: #eee; }
+#statsPanel canvas { width: 100%; height: 110px; display: block; margin: 4px 0 8px; border-radius: 4px; }
+
+/* итоги */
+#summary { position: fixed; inset: 0; background: rgba(0,0,6,0.94); z-index: 300; display: none; overflow-y: auto; }
+.sumHead { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: center; padding: 10px 16px; background: rgba(8,8,14,0.97); border-bottom: 1px solid #333; }
+.sumHead h2 { font-size: 16px; color: #eee; flex: 1; }
+.sumBody { max-width: 1100px; margin: 0 auto; padding: 14px 16px 40px; }
+.sumTop { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.kpi { background: #12121a; border: 1px solid #2a2a36; border-radius: 8px; padding: 8px; text-align: center; font-size: 11px; color: #889; }
+.kpi b { display: block; font-size: 20px; color: #eef; margin-bottom: 2px; }
+.sumRec { margin: 10px 0; color: #cb9; font-size: 12px; }
+.sumBody h4 { margin: 12px 0 6px; color: #aab; }
+.arch > div { position: relative; display: flex; align-items: center; height: 20px; margin: 2px 0; font-size: 12px; }
+.arch span { width: 110px; z-index: 1; padding-left: 6px; color: #eee; }
+.arch i { position: absolute; left: 0; top: 0; bottom: 0; background: #2a4a6a; border-radius: 3px; opacity: 0.6; }
+.arch em { z-index: 1; margin-left: auto; padding-right: 6px; font-style: normal; color: #cde; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 12px; margin-top: 12px; }
+.chartCard { background: #0c0c12; border: 1px solid #22222c; border-radius: 8px; padding: 8px; font-size: 12px; color: #aab; }
+.chartCard canvas { width: 100%; height: 170px; display: block; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <button id="btnPlay" class="active" title="Пауза / продолжить (Пробел)">⏸</button>
+  <button id="btnStep" title="Один шаг (.)">⏭</button>
+  <label title="Скорость времени">⏱ <input type="range" id="speedSlider" min="0.1" max="12" step="0.1" value="1" style="width:90px"><span id="speedVal">1.0×</span></label>
+  <div class="sep"></div>
+  <button id="btnSpawn" title="1">🧬 Спавн</button>
+  <button id="btnPlant" title="2">🌿 Растения</button>
+  <button id="btnSource" title="3">🍄 Источник</button>
+  <button id="btnWall" title="4">🧱 Палка</button>
+  <button id="btnErase" title="5">🗑 Ластик</button>
+  <div class="sep"></div>
+  <button id="btnFit" title="Показать весь мир (F)">⌖</button>
+  <button id="btnSettings" title="Настройки">⚙ Настройки</button>
+  <button id="btnStats" title="Статистика">📊</button>
+  <button id="btnSummary" title="Итоги и графики">🏁 Итоги</button>
+  <span id="stats"></span>
+</div>
+
+<canvas id="canvas"></canvas>
+<div id="toolIndicator"></div>
+<div id="hoverPanel"></div>
+
+<div id="settingsPanel" class="panel">
+  <h3>⚙ Настройки <span><button id="btnRestart" title="Новый мир с текущими настройками">🔄 Перезапуск</button> <button id="btnResetSettings" title="Сбросить настройки">⟲</button></span></h3>
+  <div id="settingsBody"></div>
+</div>
+
+<div id="statsPanel" class="panel">
+  <h3>📊 Статистика</h3>
+  <div class="stline"><span>Время</span><b id="stTime">0</b></div>
+  <div class="stline"><span>Клеток</span><b id="stCells">0</b></div>
+  <div class="stline"><span>Растений / мяса / источников</span><b><span id="stPlants">0</span> / <span id="stMeat">0</span> / <span id="stSources">0</span></b></div>
+  <div class="stline"><span>Рождений</span><b id="stBirths">0</b></div>
+  <div class="stline"><span>Убийств</span><b id="stKills">0</b></div>
+  <div class="stline"><span>Смертей от голода</span><b id="stStarve">0</b></div>
+  <div class="stline"><span>Макс. поколение</span><b id="stGen">0</b></div>
+  <div class="section-title">Популяция</div>
+  <canvas id="popChart"></canvas>
+  <div class="section-title">Средние характеристики тела</div>
+  <canvas id="statChart"></canvas>
+</div>
+
+<div id="summary">
+  <div class="sumHead">
+    <h2>🏁 Итоги симуляции</h2>
+    <button id="sumExport">⬇ JSON</button>
+    <button id="sumClose">✕ Закрыть</button>
+  </div>
+  <div class="sumBody"></div>
+</div>
+
+<script>
+//@SCRIPTS@
+</script>
+</body>
+</html>
