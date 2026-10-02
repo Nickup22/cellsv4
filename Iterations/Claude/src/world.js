@@ -122,9 +122,9 @@ function recordGeneration(gen, genome) {
 function createCell(x, y, genome, parent, fixedId) {
   const g = (genome || randomGenome()).slice();
   const strength = g[0], armor = g[1], regen = g[2];
-  const mass = 1 + armor / 255 * 1.8;
+  const mass = 1 + armor / 255 * 1.4 + strength / 255 * 0.35;   // броня — основной вес, но и мышцы весят
   const maxHp = 90 + armor * 0.6;
-  const maxEnergy = 140 + strength * 0.4;
+  const maxEnergy = 170 + regen * 0.1;          // запас энергии почти одинаковый: сила больше не даёт «бесплатный» бак
   const gen = parent ? parent.gen + 1 : 0;
 
   const c = {
@@ -140,12 +140,13 @@ function createCell(x, y, genome, parent, fixedId) {
     // физиология
     mass, maxHp, hp: maxHp, hardHp: 0,
     maxEnergy, energy: maxEnergy * 0.7,
-    speed: (300 - armor * 0.5) / mass,
-    attackDamage: 6 + strength / 255 * 40,
+    speed: (300 - armor * 0.45) / mass,
+    attackDamage: 6 + strength / 255 * 36,
     attackCooldown: 0.25 + strength / 255 * 1.4,
-    knockback: 60 + strength * 0.15,
+    knockback: 40 + strength * 0.12,
     regenRate: regen / 255 * 38,
-    baseUpkeep: 1.2 + regen / 255 * 1.5 + (regen > 150 ? 0.5 : 0),
+    // у каждой статы своя цена: мышцы, мембрана и регенерация — всё ест энергию (реген — больше всех)
+    baseUpkeep: 1.0 + strength / 255 * 0.9 + armor / 255 * 0.3 + regen / 255 * 0.8,
     // состояние
     alive: true, age: 0, gen,
     parent: parent ? parent.id : null,

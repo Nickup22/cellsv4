@@ -336,7 +336,7 @@ function updateHoverPanel(now) {
 
 function hoverHtml(c) {
   const def = c.armor / 255, pen = c.strength / 255;
-  const crit = S.critChance * (1 + pen) * (1 - def * 0.7) * 100;
+  const crit = S.critChance * (1 + pen * 0.6) * (1 - def * 0.7) * 100;
   const upkeep = c.baseUpkeep * S.hungerMult;
   const tEmpty = upkeep > 0 ? c.energy / upkeep : Infinity;
   const tDeath = S.starveDmg > 0 ? tEmpty + c.hp / S.starveDmg : Infinity;

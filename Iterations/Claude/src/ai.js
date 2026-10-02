@@ -29,6 +29,21 @@ function retaliationTarget(c) {
   return a && a.alive && simTime - c.lastAttackedAt < 2.5 ? a : null;
 }
 
+// ---------- оценка схватки ----------
+// Клетка знает свои статы и видит чужой цвет: прикидывает, кто кого убьёт быстрее (с бронёй, критами и регеном в бою)
+function dps(a, b) {
+  const def = b.armor / 255, pen = a.strength / 255;
+  const crit = S.critChance * (1 + pen * 0.6) * (1 - def * 0.7);
+  return a.attackDamage * S.dmgMult * (1 - def * 0.55) * (1 + crit * 1.2) / a.attackCooldown;
+}
+function fightRegen(c) { return c.regenRate * (0.15 + 0.25 * c.regen / 255); }
+// > 1 — я, скорее всего, побеждаю; < 1 — проигрываю
+function fightOdds(c, o) {
+  const iKillIn = o.hp / Math.max(0.5, dps(c, o) - fightRegen(o));
+  const heKillsIn = c.hp / Math.max(0.5, dps(o, c) - fightRegen(c));
+  return heKillsIn / iKillIn;
+}
+
 // Оценка добычи: чем меньше, тем привлекательнее
 function preyScore(c, o, d) {
   let s = d * (1 + o.armor / 255 * 0.8);
@@ -41,8 +56,8 @@ function pickPrey(c, desperate) {
   let best = null, bestS = Infinity;
   for (const o of c.near) {
     if (o === c.teammate || ignored(c, o)) continue;
-    // осторожные не лезут на заведомо более сильных
-    if (!desperate && o.strength - c.strength > 90 + c.courage * 0.6) continue;
+    // не лезет в заведомо проигрышный бой; смелые рискуют больше
+    if (!desperate && fightOdds(c, o) < lerp(1.4, 0.6, c.courage / 255)) continue;
     // свои (почти идентичный геном) — не добыча, если только не умираешь с голоду
     if (!desperate && genomeSimilarity(c.genome, o.genome) > 0.9) continue;
     const d = Math.hypot(o.x - c.x, o.y - c.y);
@@ -205,7 +220,12 @@ function think(c) {
   const isHungry = ef < hungryThr;
   const veryHungry = ef < 0.22;
   // Смелые отступают при бóльших потерях HP; регенераторов потери пугают меньше
-  const retreatThr = lerp(0.5, 0.1, c.courage / 255) * (1 - 0.35 * c.regen / 255);
+  let retreatThr = lerp(0.5, 0.1, c.courage / 255) * (1 - 0.35 * c.regen / 255);
+  // проигрывает схватку — отходит раньше (смелость частично глушит это)
+  if (threat) {
+    const odds = fightOdds(c, threat);
+    if (odds < 1) retreatThr = Math.min(0.85, retreatThr + (1 - odds) * 0.45 * (1 - c.courage / 255 * 0.6));
+  }
 
   // ── Связи с товарищем ──
   if (c.teammate && (!c.teammate.alive || dist(c, c.teammate) > sight * 1.6 || (veryHungry && Math.random() < 0.08)))

@@ -46,6 +46,18 @@ Life.on('death', (c, cause) => { if (cause === 'kill') console.log('#' + c.id + 
 function buildSettings() {
   const body = $('settingsBody');
   body.innerHTML = '';
+  // выбор стартовой карты
+  const map = document.createElement('div');
+  map.className = 'genbox';
+  map.innerHTML = `<div class="gtitle">🗺 Стартовая карта</div>
+    <div class="btnrow"><select id="mapSelect" style="flex:1">${SCENARIOS.map(sc => `<option value="${sc.id}">${sc.name}</option>`).join('')}</select>
+    <button id="mapStart">▶ Начать</button></div><div id="mapDesc" style="opacity:.75;line-height:1.35"></div>`;
+  body.appendChild(map);
+  const sel = map.querySelector('#mapSelect'), desc = map.querySelector('#mapDesc');
+  sel.value = currentScenario;
+  const showDesc = () => { desc.textContent = getScenario(sel.value).desc; };
+  sel.onchange = showDesc; showDesc();
+  map.querySelector('#mapStart').onclick = () => { startScenario(sel.value); fitCamera(); buildSettings(); saveSettings(); };
   const groups = {};
   const getGroup = name => {
     if (groups[name]) return groups[name];
@@ -112,6 +124,7 @@ function buildSettings() {
     if (arch.value === '') return;
     const i = +arch.value, lv = [Math.floor(i / 9), Math.floor(i / 3) % 3, i % 3];
     lv.forEach((l, k) => { S.spawnGenome[k] = LV[l]; sliders[k][0].value = LV[l]; sliders[k][1].textContent = LV[l]; });
+    ARCH_NUCLEUS[ARCH_NAMES[i]].forEach((v, k) => { S.spawnGenome[3 + k] = v; sliders[3 + k][0].value = v; sliders[3 + k][1].textContent = v; });
     S.spawnMode = 'exact';
     const m = body.querySelector('select[data-key="spawnMode"]'); if (m) m.value = 'exact';
     saveSettings();
