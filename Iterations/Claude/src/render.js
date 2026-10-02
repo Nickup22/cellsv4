@@ -179,6 +179,8 @@ function render(now) {
       ctx.fillRect(bx, by, bw * hf, bh);
     }
 
+    if (c.leader && detail) drawCrown(c, r);
+
     if (S.combatLines && detail) {
       if (c.task === 'hunt' && c.taskTarget && c.taskTarget.alive) {
         ctx.strokeStyle = 'rgba(255,50,50,0.2)'; ctx.lineWidth = 1;
@@ -195,6 +197,21 @@ function render(now) {
   drawHoverOverlay(now);
   drawToolPreview();
   ctx.restore();
+}
+
+// Корона вожака стаи: золотая, над полоской HP; на крупном зуме — размер стаи
+function drawCrown(c, r) {
+  const w = Math.max(5, r * 0.95), y0 = c.y - r - 12, h = w * 0.7;
+  ctx.beginPath();
+  ctx.moveTo(c.x - w, y0); ctx.lineTo(c.x - w, y0 - h * 0.55); ctx.lineTo(c.x - w * 0.5, y0 - h * 0.25);
+  ctx.lineTo(c.x, y0 - h); ctx.lineTo(c.x + w * 0.5, y0 - h * 0.25); ctx.lineTo(c.x + w, y0 - h * 0.55);
+  ctx.lineTo(c.x + w, y0); ctx.closePath();
+  ctx.fillStyle = '#ffd23c'; ctx.fill();
+  ctx.strokeStyle = '#a06800'; ctx.lineWidth = 0.9; ctx.stroke();
+  if (cam.zoom > 0.9) {
+    ctx.fillStyle = '#fff'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(String(c.pack + 1), c.x, y0 - h - 2);
+  }
 }
 
 // ---------- подсветка наведённой клетки ----------
@@ -361,6 +378,7 @@ function hoverHtml(c) {
     ${t && t.alive && t.id ? row('Цель', '#' + t.id) : ''}
     ${c.teammate && c.teammate.alive ? row('🤝 Товарищ', '#' + c.teammate.id) : ''}
     ${row('Возраст · убийств', `${fmtTime(c.age)} · ${c.kills}`)}
+    ${c.leader ? row('<span style="color:#fc3">👑 Вожак стаи</span>', `${c.pack + 1} клеток`) : (c.packRoot && c.packRoot !== c.id && lineage.get(c.packRoot) && lineage.get(c.packRoot).cell && lineage.get(c.packRoot).cell.leader ? row('Стая вожака', '👑 #' + c.packRoot) : '')}
     <div class="section-title">Род</div>
     ${row('<span style="color:#fc3">● Предки</span>', `${rel.ancTotal} (живых ${rel.anc.length})`)}
     ${row('<span style="color:#3ef">● Потомки</span>', `${rel.descTotal} (живых ${rel.desc.length}) · детей ${c.children.length}`)}

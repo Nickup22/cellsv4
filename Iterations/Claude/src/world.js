@@ -118,7 +118,8 @@ function recordGeneration(gen, genome) {
 }
 
 // ==================== CELL ====================
-function createCell(x, y, genome, parent) {
+// fixedId/restore — при загрузке сейва: сохраняем прежний id и не трогаем родословную (она восстанавливается отдельно)
+function createCell(x, y, genome, parent, fixedId) {
   const g = (genome || randomGenome()).slice();
   const strength = g[0], armor = g[1], regen = g[2];
   const mass = 1 + armor / 255 * 1.8;
@@ -127,7 +128,7 @@ function createCell(x, y, genome, parent) {
   const gen = parent ? parent.gen + 1 : 0;
 
   const c = {
-    id: nextId++,
+    id: fixedId || nextId++,
     x, y, vx: 0, vy: 0,
     radius: S.cellSize,
     genome: g,
@@ -167,10 +168,19 @@ function createCell(x, y, genome, parent) {
     fleeX: x, fleeY: y,
     pressX: 0, pressY: 0, press: false,
     kiting: false,
+    ignore: null,           // Map цель → до какого времени игнорируем
+    escapeUntil: 0, escapeAngle: 0, stuck: false, wantsMove: false,
+    px: x, py: y, pxAt: 0,  // для детектора застревания
+    hx: 0, hy: 0,           // сглаженный курс
+    memX: 0, memY: 0, memAt: -999,   // где в последний раз ела
+    exX: x, exY: y, exUntil: 0,      // точка исследования
+    routeFailed: false,
+    pack: 0, leader: false, packRoot: 0,   // стая: размер, вожак ли, id вожака
     // визуал
     heartTimer: Math.random() * 3, pulse: 0,
   };
 
+  if (fixedId) return c;
   recordGeneration(gen, g);
   const rec = { id: c.id, parent: c.parent, children: [], cell: c, gen };
   lineage.set(c.id, rec);

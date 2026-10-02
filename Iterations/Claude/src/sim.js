@@ -44,7 +44,7 @@ function combat(c, dt) {
   if (!t || !t.alive) return;
   const dx = t.x - c.x, dy = t.y - c.y, d = Math.hypot(dx, dy);
   // Удар возможен только при касании и когда готов; кулдаун, а не зарядка — первый удар мгновенный
-  if (d < c.radius + t.radius + 6 && c.attackTimer <= 0) attack(c, t, dx, dy, d);
+  if (d < c.radius + t.radius + 6 && c.attackTimer <= 0 && !losBlocked(c.x, c.y, t.x, t.y)) attack(c, t, dx, dy, d);
 }
 
 function attack(c, t, dx, dy, d) {
@@ -117,13 +117,13 @@ function economy(c, dt) {
     const m = meatGrid.nearest(c.x, c.y, c.radius + 8);
     if (m && Math.hypot(m.x - c.x, m.y - c.y) < c.radius + m.radius + 2) {
       c.energy = Math.min(c.maxEnergy, c.energy + m.energy);
-      c.meatEaten += m.energy; m.alive = false;
+      c.meatEaten += m.energy; m.alive = false; c.memX = m.x; c.memY = m.y; c.memAt = simTime;
       spawnParticles(m.x, m.y, 4, '#ff6644', 0.4, 20);
     }
     const p = plantGrid.nearest(c.x, c.y, c.radius + 8);
     if (p && Math.hypot(p.x - c.x, p.y - c.y) < c.radius + p.radius + 2) {
       c.energy = Math.min(c.maxEnergy, c.energy + p.energy);
-      c.plantEaten += p.energy; p.alive = false;
+      c.plantEaten += p.energy; p.alive = false; c.memX = p.x; c.memY = p.y; c.memAt = simTime;
       spawnParticles(p.x, p.y, 3, '#44ff44', 0.3, 15);
     }
   }
@@ -143,7 +143,9 @@ function maybeReproduce(c, dt) {
   const ef = c.energy / c.maxEnergy, hf = c.hp / c.maxHp;
   // прожорливые хотят больше энергии про запас, прежде чем размножаться
   if (ef < 0.62 + c.greed / 255 * 0.3 || hf < 0.5 || c.hardHp > c.maxHp * 0.3) return;
-  if (Math.random() < (0.12 + (1 - c.greed / 255) * 0.18) * S.reproChance * dt) reproduce(c);
+  // в толчее размножаются неохотно (естественный регулятор плотности)
+  const crowd = 1 / (1 + Math.max(0, c.near.length - 10) / 10);
+  if (Math.random() < (0.12 + (1 - c.greed / 255) * 0.18) * S.reproChance * crowd * dt) reproduce(c);
 }
 
 function reproduce(c) {
@@ -235,6 +237,27 @@ function spawnInitial() {
   sampleStats(true);
 }
 
+// ---------- стаи и вожаки ----------
+// Нет кода, управляющего стаями: вожак — просто клетка, за которой (прямо или через цепочку) едут другие.
+let packLeaders = 0;
+function computePacks() {
+  for (const c of cells) { c.pack = 0; c.leader = false; }
+  for (const c of cells) {
+    let r = c, n = 0;
+    while (r.teammate && r.teammate.alive && n < 12) { r = r.teammate; n++; if (r === c) break; }
+    if (r === c && c.teammate) {            // замкнутая пара/кольцо: вожак — клетка с минимальным id
+      let m = c, x = c.teammate;
+      for (let i = 0; i < 12 && x && x.alive && x !== c; i++) { if (x.id < m.id) m = x; x = x.teammate; }
+      r = m;
+    }
+    c.packRoot = r.id;
+    if (r !== c) r.pack++;
+  }
+  packLeaders = 0;
+  for (const c of cells) if (c.pack >= 2) { c.leader = true; packLeaders++; }
+}
+let _packTick = 0;
+
 // ==================== STEP ====================
 function step(dt) {
   simTime += dt;
@@ -287,6 +310,8 @@ function step(dt) {
   }
 
   compact();
+  if (++_packTick % 15 === 0) computePacks();
+  if (S.autoRespawn && cells.length === 0) for (let i = 0; i < 20; i++) spawnCell(world.w / 2 + rand(-150, 150), world.h / 2 + rand(-150, 150), randomGenome());
   sampleStats(false);
   emit('tick', dt);
 }

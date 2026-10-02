@@ -298,7 +298,7 @@ speed.oninput = () => { timeScale = parseFloat(speed.value); $('speedVal').textC
 
 for (const t in TOOLS) $(TOOLS[t][0]).onclick = () => setTool(t);
 
-function closePanels() { $('settingsPanel').style.display = 'none'; $('statsPanel').style.display = 'none'; }
+function closePanels() { for (const id of ['settingsPanel', 'statsPanel', 'savesPanel']) $(id).style.display = 'none'; }
 function togglePanel(id) {
   const el = $(id), show = el.style.display !== 'block';
   closePanels(); el.style.display = show ? 'block' : 'none';
@@ -306,6 +306,43 @@ function togglePanel(id) {
 $('btnSettings').onclick = () => togglePanel('settingsPanel');
 $('btnStats').onclick = () => togglePanel('statsPanel');
 $('btnSummary').onclick = openSummary;
+
+// ---------- сейвы ----------
+function saveMsg(t, bad) { const el = $('saveMsg'); el.textContent = t || ''; el.style.color = bad ? '#f66' : '#6d6'; }
+
+function renderSlots() {
+  const box = $('slotList');
+  box.innerHTML = '';
+  for (let i = 1; i <= SLOT_COUNT; i++) {
+    const m = slotMeta(i), row = document.createElement('div');
+    row.className = 'slot';
+    row.innerHTML = `<div><b>Слот ${i}</b><small>${m ? `${new Date(m.at).toLocaleString()} · ${fmtTime(m.t)} · ${m.cells} клеток · ${m.kb} КБ` : 'пусто'}</small></div>
+      <button data-a="save">Сохранить</button><button data-a="load" ${m ? '' : 'disabled'}>Загрузить</button><button data-a="del" ${m ? '' : 'disabled'}>✕</button>`;
+    row.querySelector('[data-a=save]').onclick = () => { const e = saveSlot(i); saveMsg(e || 'Сохранено в слот ' + i, !!e); renderSlots(); };
+    row.querySelector('[data-a=load]').onclick = () => { const e = loadSlot(i); saveMsg(e || 'Загружено из слота ' + i, !!e); if (!e) afterLoad(); };
+    row.querySelector('[data-a=del]').onclick = () => { deleteSlot(i); renderSlots(); };
+    box.appendChild(row);
+  }
+}
+
+function afterLoad() {
+  buildSettings(); renderSlots();
+  speed.value = timeScale; $('speedVal').textContent = timeScale.toFixed(1) + '×';
+}
+
+$('btnSaves').onclick = () => { togglePanel('savesPanel'); renderSlots(); saveMsg(''); };
+$('saveDownload').onclick = () => { downloadSave(); saveMsg('Файл скачан'); };
+$('saveUpload').onclick = () => $('saveFile').click();
+$('saveFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const err = await loadSaveFile(f); e.target.value = '';
+  saveMsg(err || 'Загружено из файла', !!err); if (!err) afterLoad();
+};
+let autoSaveTimer = null;
+$('autoSave').onchange = function () {
+  clearInterval(autoSaveTimer);
+  if (this.checked) autoSaveTimer = setInterval(() => { const e = saveSlot(1); if (e) saveMsg(e, true); }, 60000);
+};
 $('btnRestart').onclick = () => { spawnInitial(); fitCamera(); };
 $('btnResetSettings').onclick = () => { resetSettings(); buildSettings(); refreshCellRadius(); };
 
@@ -320,6 +357,7 @@ function updateStatsPanel() {
   $('stBirths').textContent = stats.births;
   $('stStarve').textContent = stats.starve;
   $('stGen').textContent = stats.maxGen;
+  $('stPacks').textContent = packLeaders;
   $('stTime').textContent = fmtTime(simTime);
   drawLiveCharts($('popChart'), $('statChart'));
 }
