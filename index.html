@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Клетки 4 — Claude</title>
+<style>
+:root { --bg: #050709; --card: #0c1018; --line: #1e2535; --text: #e2e8f0; --dim: #8a94a6; --accent: #7fb3ff; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { min-height: 100vh; background: var(--bg) radial-gradient(ellipse 120% 70% at 50% -10%, #0d1a2e, var(--bg) 60%) no-repeat;
+  color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 48px 16px; }
+main { max-width: 760px; margin: 0 auto; }
+h1 { font-size: clamp(1.6rem, 4vw, 2.2rem); margin-bottom: 6px; }
+.sub { color: var(--dim); margin-bottom: 28px; line-height: 1.5; }
+a.card { display: block; text-decoration: none; color: inherit; background: var(--card); border: 1px solid var(--line);
+  border-radius: 14px; padding: 16px 18px; margin-bottom: 12px; transition: border-color .15s, transform .15s; }
+a.card:hover, a.card:focus-visible { border-color: var(--accent); transform: translateY(-1px); outline: none; }
+.row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.row b { font-size: 17px; } .tag { font-size: 12px; color: var(--accent); border: 1px solid #2a3a55; border-radius: 99px; padding: 1px 8px; }
+.card p { color: var(--dim); font-size: 14px; line-height: 1.5; margin-top: 6px; }
+.latest { border-color: #2f4a77; }
+footer { color: #556; font-size: 12px; margin-top: 24px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🧬 Клетки 4 — итерации Claude</h1>
+  <p class="sub">Песочница эволюции: клетки с геномом из 6 байт, бой, энергия, стаи, естественный отбор. Каждая итерация — один HTML-файл, открывается прямо в браузере.</p>
+
+  <a class="card latest" href="i3/cells.html"><div class="row"><b>Итерация 3</b><span class="tag">последняя</span></div>
+    <p>9 стартовых карт, родное ядро у каждого архетипа, баланс по стенду (зелёные и синие больше не вымирают), оценка шансов в бою, сейвы, режим обоев, вожаки с коронами.</p></a>
+
+  <a class="card" href="atlas.html"><div class="row"><b>Атлас архетипов</b><span class="tag">справочник</span></div>
+    <p>27 архетипов: описание, сильные и слабые стороны, родное ядро, игровые цифры и выживаемость в симуляции.</p></a>
+
+  <a class="card" href="i2/cells.html"><div class="row"><b>Итерация 2</b></div>
+    <p>Клетки скользят вдоль стен вместо дрожания, бросают недостижимые цели, помнят где ели. Вожаки 👑, сейвы и загрузка, режим обоев 🖼.</p></a>
+
+  <a class="card" href="i1/cells.html"><div class="row"><b>Итерация 1</b></div>
+    <p>Модульный движок на основе MiMo i4: сетка соседей, маршруты в обход палок, родословная, панель наведения, итоги с графиками, моды.</p></a>
+
+  <footer>Исходники последней итерации — <code>i3/src/</code> (сборка: <code>node i3/src/build.js</code>, атлас: <code>node i3/src/build-atlas.js</code>). Подробности — <code>i3/CHANGELOG.md</code>.</footer>
+</main>
+</body>
+</html>

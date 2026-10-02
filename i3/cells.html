@@ -1,0 +1,3032 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Клетки 4 — итерация Claude</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; color: #ccc; touch-action: none; }
+canvas#canvas { position: fixed; top: 38px; left: 0; width: 100vw; height: calc(100vh - 38px); display: block; cursor: crosshair; touch-action: none; }
+
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0; height: 38px; z-index: 100;
+  background: rgba(20,20,24,0.96); border-bottom: 1px solid #333;
+  display: flex; align-items: center; gap: 6px; padding: 0 10px; font-size: 13px;
+  overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+}
+#topbar::-webkit-scrollbar { display: none; }
+button, select, input[type=number], textarea {
+  background: #26262c; color: #ccc; border: 1px solid #444; border-radius: 4px; padding: 3px 8px; font-size: 12px; font-family: inherit;
+}
+button { cursor: pointer; }
+button:hover { background: #34343c; }
+button.active { background: #454552; border-color: #99a; color: #fff; }
+.sep { width: 1px; height: 20px; background: #444; margin: 0 3px; flex-shrink: 0; }
+#topbar label { display: flex; align-items: center; gap: 4px; }
+#stats { margin-left: auto; font-size: 12px; opacity: 0.7; padding-left: 10px; }
+
+#toolIndicator {
+  position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%); z-index: 90; pointer-events: none;
+  background: rgba(20,20,24,0.9); padding: 4px 14px; border-radius: 12px; font-size: 12px; border: 1px solid #444; max-width: 94vw;
+}
+
+/* режим обоев */
+body.wallpaper #topbar, body.wallpaper #toolIndicator, body.wallpaper .panel, body.wallpaper #hoverPanel { display: none !important; }
+body.wallpaper canvas#canvas { top: 0; height: 100vh; cursor: none; }
+
+/* hover */
+#hoverPanel {
+  position: fixed; pointer-events: none; z-index: 200; display: none; width: 270px;
+  background: rgba(12,12,18,0.9); border: 1px solid #556; border-radius: 6px; padding: 8px 10px;
+  font-size: 11.5px; line-height: 1.45; backdrop-filter: blur(4px);
+}
+.section-title { color: #aab; font-weight: 600; margin-top: 5px; border-bottom: 1px solid #2c2c36; padding-bottom: 1px; }
+.stat-row { display: flex; justify-content: space-between; gap: 8px; }
+.stat-row span:last-child { text-align: right; color: #eee; }
+.hp-bar { position: relative; height: 5px; background: #2a2a2a; border-radius: 3px; overflow: hidden; margin: 2px 0 3px; }
+.hp-fill { height: 100%; }
+.hard-zone { position: absolute; right: 0; top: 0; height: 100%; background: #8b0000; }
+.genome-bar { display: flex; gap: 2px; margin: 4px 0; }
+.genome-bar div { flex: 1; height: 16px; border: 1px solid #666; border-radius: 2px; display: flex; align-items: center; justify-content: center; }
+.genome-bar i { font-style: normal; font-size: 9px; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+
+/* panels */
+.panel {
+  position: fixed; top: 44px; background: rgba(14,14,20,0.96); border: 1px solid #444; border-radius: 8px;
+  padding: 12px; z-index: 150; width: min(350px, 96vw); max-height: calc(100vh - 60px); overflow-y: auto; display: none; font-size: 12px;
+}
+#settingsPanel { right: 6px; }
+#statsPanel { left: 6px; }
+.panel h3 { font-size: 14px; margin-bottom: 8px; color: #ddd; display: flex; justify-content: space-between; align-items: center; }
+details { border-top: 1px solid #2a2a32; padding: 4px 0; }
+summary { cursor: pointer; padding: 4px 0; color: #ddd; font-weight: 600; }
+.srow { display: flex; align-items: center; gap: 6px; margin: 4px 0; justify-content: space-between; }
+.srow > span { flex: 1; }
+.srow input[type=range] { width: 120px; }
+.srow input[type=number] { width: 80px; }
+.srow em { font-style: normal; width: 38px; text-align: right; color: #9ac; }
+.srow select { max-width: 170px; }
+.genbox { margin: 8px 0; padding: 8px; background: #101018; border: 1px solid #2a2a36; border-radius: 6px; }
+.gtitle { color: #9ab; margin-bottom: 4px; }
+.btnrow { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0; }
+textarea { width: 100%; font-family: monospace; font-size: 11px; }
+.slot { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-top: 1px solid #2a2a32; }
+.slot > div { flex: 1; font-size: 11.5px; } .slot small { color: #889; display: block; }
+.stline { display: flex; justify-content: space-between; padding: 1px 0; }
+.stline b { color: #eee; }
+#statsPanel canvas { width: 100%; height: 110px; display: block; margin: 4px 0 8px; border-radius: 4px; }
+
+/* итоги */
+#summary { position: fixed; inset: 0; background: rgba(0,0,6,0.94); z-index: 300; display: none; overflow-y: auto; }
+.sumHead { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: center; padding: 10px 16px; background: rgba(8,8,14,0.97); border-bottom: 1px solid #333; }
+.sumHead h2 { font-size: 16px; color: #eee; flex: 1; }
+.sumBody { max-width: 1100px; margin: 0 auto; padding: 14px 16px 40px; }
+.sumTop { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.kpi { background: #12121a; border: 1px solid #2a2a36; border-radius: 8px; padding: 8px; text-align: center; font-size: 11px; color: #889; }
+.kpi b { display: block; font-size: 20px; color: #eef; margin-bottom: 2px; }
+.sumRec { margin: 10px 0; color: #cb9; font-size: 12px; }
+.sumBody h4 { margin: 12px 0 6px; color: #aab; }
+.arch > div { position: relative; display: flex; align-items: center; height: 20px; margin: 2px 0; font-size: 12px; }
+.arch span { width: 110px; z-index: 1; padding-left: 6px; color: #eee; }
+.arch i { position: absolute; left: 0; top: 0; bottom: 0; background: #2a4a6a; border-radius: 3px; opacity: 0.6; }
+.arch em { z-index: 1; margin-left: auto; padding-right: 6px; font-style: normal; color: #cde; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 12px; margin-top: 12px; }
+.chartCard { background: #0c0c12; border: 1px solid #22222c; border-radius: 8px; padding: 8px; font-size: 12px; color: #aab; }
+.chartCard canvas { width: 100%; height: 170px; display: block; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <button id="btnPlay" class="active" title="Пауза / продолжить (Пробел)">⏸</button>
+  <button id="btnStep" title="Один шаг (.)">⏭</button>
+  <label title="Скорость времени">⏱ <input type="range" id="speedSlider" min="0.1" max="12" step="0.1" value="1" style="width:90px"><span id="speedVal">1.0×</span></label>
+  <div class="sep"></div>
+  <button id="btnSpawn" title="1">🧬 Спавн</button>
+  <button id="btnPlant" title="2">🌿 Растения</button>
+  <button id="btnSource" title="3">🍄 Источник</button>
+  <button id="btnWall" title="4">🧱 Палка</button>
+  <button id="btnErase" title="5">🗑 Ластик</button>
+  <div class="sep"></div>
+  <button id="btnFit" title="Показать весь мир (F)">⌖</button>
+  <button id="btnWallpaper" title="Режим обоев: без интерфейса, на весь экран (H, выход — H / Esc / двойной клик)">🖼</button>
+  <button id="btnSettings" title="Настройки">⚙ Настройки</button>
+  <button id="btnStats" title="Статистика">📊</button>
+  <button id="btnSaves" title="Сохранить / загрузить мир">💾 Сейвы</button>
+  <button id="btnSummary" title="Итоги и графики">🏁 Итоги</button>
+  <span id="stats"></span>
+</div>
+
+<canvas id="canvas"></canvas>
+<div id="toolIndicator"></div>
+<div id="hoverPanel"></div>
+
+<div id="settingsPanel" class="panel">
+  <h3>⚙ Настройки <span><button id="btnRestart" title="Новый мир с текущими настройками">🔄 Перезапуск</button> <button id="btnResetSettings" title="Сбросить настройки">⟲</button></span></h3>
+  <div id="settingsBody"></div>
+</div>
+
+<div id="statsPanel" class="panel">
+  <h3>📊 Статистика</h3>
+  <div class="stline"><span>Время</span><b id="stTime">0</b></div>
+  <div class="stline"><span>Клеток</span><b id="stCells">0</b></div>
+  <div class="stline"><span>Растений / мяса / источников</span><b><span id="stPlants">0</span> / <span id="stMeat">0</span> / <span id="stSources">0</span></b></div>
+  <div class="stline"><span>Рождений</span><b id="stBirths">0</b></div>
+  <div class="stline"><span>Убийств</span><b id="stKills">0</b></div>
+  <div class="stline"><span>Смертей от голода</span><b id="stStarve">0</b></div>
+  <div class="stline"><span>Макс. поколение</span><b id="stGen">0</b></div>
+  <div class="stline"><span>Стай (👑 вожаков)</span><b id="stPacks">0</b></div>
+  <div class="section-title">Популяция</div>
+  <canvas id="popChart"></canvas>
+  <div class="section-title">Средние характеристики тела</div>
+  <canvas id="statChart"></canvas>
+</div>
+
+<div id="savesPanel" class="panel" style="right:6px">
+  <h3>💾 Сейвы</h3>
+  <div id="slotList"></div>
+  <div class="btnrow" style="margin-top:8px">
+    <button id="saveDownload">⬇ Скачать файл</button>
+    <button id="saveUpload">📂 Загрузить файл</button>
+    <input type="file" id="saveFile" accept=".json,application/json" style="display:none">
+  </div>
+  <label class="srow"><span>Автосейв в слот 1 каждую минуту</span><input type="checkbox" id="autoSave"></label>
+  <div id="saveMsg" style="margin-top:6px;min-height:16px"></div>
+</div>
+
+<div id="summary">
+  <div class="sumHead">
+    <h2>🏁 Итоги симуляции</h2>
+    <button id="sumExport">⬇ JSON</button>
+    <button id="sumClose">✕ Закрыть</button>
+  </div>
+  <div class="sumBody"></div>
+</div>
+
+<script>
+'use strict';
+// ───────── config.js ─────────
+// ==================== CONFIG ====================
+// Клетки 4 — итерация Claude. Все настройки живут в объекте S и описаны таблицей SETTING_DEFS:
+// UI-панель настроек строится из неё автоматически, так что новая настройка = одна строка.
+
+const VERSION = 'Claude-1';
+
+const GENE_NAMES = ['Сила', 'Броня', 'Реген', 'Смелость', 'Стайность', 'Прожорливость'];
+
+// Архетипы из cells.jsx: индекс = сила*9 + броня*3 + реген, уровни 30 / 155 / 235
+const LV = [30, 155, 235];
+const ARCH_NAMES = [
+  'Личинка', 'Слизень', 'Пожиратель', 'Чешуйка', 'Стойкий', 'Мицелий', 'Танк', 'Бастион', 'Монолит',
+  'Кусака', 'Охотник', 'Вампир', 'Воин', 'Солдат', 'Паразит', 'Страж', 'Хранитель', 'Феникс',
+  'Шершень', 'Хищник', 'Чума', 'Берсерк', 'Командир', 'Вирус', 'Колосс', 'Левиафан', 'Абсолют',
+];
+
+// «Родное» ядро архетипа — характер, подходящий телу:
+//  красные смелые одиночки, синие — стайные защитники, зелёные — прожорливые и не боятся ран;
+//  слабые и беззащитные (Личинка, Слизень) — трусливы, держатся стаей и плодятся быстро (низкая прожорливость).
+const ARCH_NUCLEUS = {
+  'Личинка': [30, 220, 110], 'Слизень': [45, 200, 80], 'Пожиратель': [130, 120, 170],
+  'Чешуйка': [50, 210, 70], 'Стойкий': [70, 200, 90], 'Мицелий': [90, 190, 140],
+  'Танк': [110, 230, 70], 'Бастион': [120, 220, 100], 'Монолит': [140, 200, 150],
+  'Кусака': [140, 150, 110], 'Охотник': [180, 110, 150], 'Вампир': [200, 80, 200],
+  'Воин': [170, 170, 110], 'Солдат': [150, 210, 130], 'Паразит': [170, 140, 150],
+  'Страж': [160, 230, 100], 'Хранитель': [140, 235, 140], 'Феникс': [190, 180, 150],
+  'Шершень': [235, 40, 110], 'Хищник': [225, 60, 160], 'Чума': [235, 50, 170],
+  'Берсерк': [245, 70, 130], 'Командир': [210, 200, 140], 'Вирус': [225, 90, 160],
+  'Колосс': [220, 120, 120], 'Левиафан': [230, 130, 160], 'Абсолют': [240, 150, 160],
+};
+function archNucleus(i) { const n = ARCH_NUCLEUS[ARCH_NAMES[i]]; return { c: n[0], s: n[1], g: n[2] }; }
+
+const SETTING_DEFS = [
+  // group, key, label, type, min, max, step, def, restart(↻ — применится при перезапуске мира)
+  { g: 'Спавн', key: 'initCells', label: 'Клеток в начале', type: 'number', min: 0, max: 3000, step: 1, def: 40, restart: true },
+  { g: 'Спавн', key: 'initRadius', label: 'Радиус начального спавна', type: 'range', min: 20, max: 1500, step: 10, def: 260, restart: true },
+  { g: 'Спавн', key: 'spawnMode', label: 'Тип спавна', type: 'select', def: 'random',
+    options: [['random', 'Случайные (в радиусе рандомизации)'], ['exact', 'Точный геном']] },
+  { g: 'Спавн', key: 'spawnSpread', label: 'Радиус рандомизации генов', type: 'range', min: 0, max: 255, step: 1, def: 255 },
+  { g: 'Спавн', key: 'spawnCount', label: 'Клеток за клик', type: 'range', min: 1, max: 60, step: 1, def: 1 },
+  { g: 'Спавн', key: 'spawnRadius', label: 'Радиус спавна кликом', type: 'range', min: 0, max: 400, step: 5, def: 40 },
+
+  { g: 'Растения', key: 'initPlants', label: 'Растений в начале', type: 'number', min: 0, max: 5000, step: 1, def: 150, restart: true },
+  { g: 'Растения', key: 'plantRate', label: 'Рейт спавна (шт/с)', type: 'range', min: 0, max: 30, step: 0.5, def: 3 },
+  { g: 'Растения', key: 'plantEnergy', label: 'Жирность растений', type: 'range', min: 5, max: 150, step: 1, def: 28 },
+  { g: 'Растения', key: 'plantMax', label: 'Лимит растений', type: 'range', min: 100, max: 6000, step: 50, def: 1800 },
+
+  { g: 'Источники', key: 'initSources', label: 'Источников в начале', type: 'number', min: 0, max: 100, step: 1, def: 5, restart: true },
+  { g: 'Источники', key: 'sourceRate', label: 'Рейт источника (шт/с)', type: 'range', min: 0, max: 10, step: 0.1, def: 1.2 },
+  { g: 'Источники', key: 'sourceRadius', label: 'Радиус спавна растений', type: 'range', min: 10, max: 300, step: 5, def: 70 },
+  { g: 'Источники', key: 'sourceFat', label: 'Жирность от источника ×', type: 'range', min: 0.2, max: 4, step: 0.1, def: 1 },
+
+  { g: 'Бой', key: 'dmgMult', label: 'Множитель урона', type: 'range', min: 0.1, max: 5, step: 0.1, def: 1 },
+  { g: 'Бой', key: 'critChance', label: 'Базовый шанс крита', type: 'range', min: 0, max: 1, step: 0.01, def: 0.15 },
+  { g: 'Бой', key: 'knockMult', label: 'Откидывание ×', type: 'range', min: 0, max: 4, step: 0.1, def: 1 },
+  { g: 'Бой', key: 'hardDmg', label: 'Хард-урон включён', type: 'bool', def: true },
+  { g: 'Бой', key: 'hardMax', label: 'Макс. хард-зона (доля HP)', type: 'range', min: 0.1, max: 0.95, step: 0.05, def: 0.65 },
+  { g: 'Бой', key: 'hardHealCost', label: 'Цена лечения хард-урона ×', type: 'range', min: 1, max: 40, step: 1, def: 10 },
+
+  { g: 'Энергия и эволюция', key: 'hungerMult', label: 'Уровень голода ×', type: 'range', min: 0, max: 4, step: 0.1, def: 1 },
+  { g: 'Энергия и эволюция', key: 'starveDmg', label: 'Урон от голода (HP/с)', type: 'range', min: 0, max: 60, step: 1, def: 18 },
+  { g: 'Энергия и эволюция', key: 'reproChance', label: 'Шанс размножения ×', type: 'range', min: 0, max: 5, step: 0.1, def: 1 },
+  { g: 'Энергия и эволюция', key: 'mutationMult', label: 'Сила мутаций ×', type: 'range', min: 0, max: 4, step: 0.1, def: 1 },
+  { g: 'Энергия и эволюция', key: 'meatYield', label: 'Выход мяса ×', type: 'range', min: 0, max: 3, step: 0.1, def: 1 },
+  { g: 'Энергия и эволюция', key: 'maxCells', label: 'Лимит клеток', type: 'range', min: 50, max: 4000, step: 50, def: 1500 },
+  { g: 'Энергия и эволюция', key: 'autoRespawn', label: 'Возрождать, если все вымерли', type: 'bool', def: false },
+  { g: 'Энергия и эволюция', key: 'plantNerf', label: 'Трава глушит реген', type: 'bool', def: true },
+
+  { g: 'ИИ и физика', key: 'sight', label: 'Дальность зрения', type: 'range', min: 100, max: 900, step: 10, def: 350 },
+  { g: 'ИИ и физика', key: 'aggression', label: 'Агрессивность ×', type: 'range', min: 0, max: 3, step: 0.1, def: 1 },
+  { g: 'ИИ и физика', key: 'sociality', label: 'Общительность ×', type: 'range', min: 0, max: 3, step: 0.1, def: 1 },
+  { g: 'ИИ и физика', key: 'speedMult', label: 'Скорость клеток ×', type: 'range', min: 0.3, max: 3, step: 0.1, def: 1 },
+
+  { g: 'Мир', key: 'worldW', label: 'Ширина мира', type: 'number', min: 500, max: 10000, step: 100, def: 2000, restart: true },
+  { g: 'Мир', key: 'worldH', label: 'Высота мира', type: 'number', min: 500, max: 10000, step: 100, def: 1500, restart: true },
+  { g: 'Мир', key: 'cellSize', label: 'Размер клетки', type: 'range', min: 5, max: 30, step: 1, def: 12 },
+
+  { g: 'Графика', key: 'particles', label: 'Активность частиц', type: 'range', min: 0, max: 3, step: 0.25, def: 1 },
+  { g: 'Графика', key: 'heartbeat', label: 'Сердцебиение клеток', type: 'bool', def: true },
+  { g: 'Графика', key: 'hpBars', label: 'Полоски HP', type: 'bool', def: true },
+  { g: 'Графика', key: 'combatLines', label: 'Линии целей и товарищей', type: 'bool', def: true },
+  { g: 'Графика', key: 'worldGrid', label: 'Сетка мира', type: 'bool', def: true },
+];
+
+const S = {};
+for (const d of SETTING_DEFS) S[d.key] = d.def;
+S.spawnGenome = [128, 128, 128, 128, 128, 128];
+
+const SETTINGS_KEY = 'cells4.claude.settings.v1';
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    for (const d of SETTING_DEFS) {
+      if (!(d.key in saved)) continue;
+      const v = saved[d.key];
+      if (d.type === 'bool') S[d.key] = !!v;
+      else if (d.type === 'select') { if (d.options.some(o => o[0] === v)) S[d.key] = v; }
+      else if (typeof v === 'number' && isFinite(v)) S[d.key] = clamp(v, d.min, d.max);
+    }
+    if (Array.isArray(saved.spawnGenome) && saved.spawnGenome.length === 6)
+      S.spawnGenome = saved.spawnGenome.map(b => clamp(Math.round(+b) || 0, 0, 255));
+  } catch (e) { /* localStorage может быть недоступен — не страшно */ }
+}
+
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(S)); } catch (e) { /* ignore */ }
+}
+
+function resetSettings() {
+  for (const d of SETTING_DEFS) S[d.key] = d.def;
+  S.spawnGenome = [128, 128, 128, 128, 128, 128];
+  try { localStorage.removeItem(SETTINGS_KEY); } catch (e) { /* ignore */ }
+}
+
+// ==================== HELPERS ====================
+function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function rand(a, b) { return a + Math.random() * (b - a); }
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+// Цвет тела: красный = сила, синий = броня, зелёный = реген  →  rgb(сила, реген, броня)
+function bodyColor(g) { return `rgb(${g[0]},${g[2]},${g[1]})`; }
+// Цвет ядра: красный = смелость, синий = стайность, зелёный = прожорливость
+function nucleusColor(g) { return `rgb(${g[3]},${g[5]},${g[4]})`; }
+
+function genomeSimilarity(a, b) {
+  let diff = 0;
+  for (let i = 0; i < 6; i++) diff += Math.abs(a[i] - b[i]);
+  return 1 - diff / (255 * 6);
+}
+
+function randomGenome() { return Array.from({ length: 6 }, () => Math.floor(Math.random() * 256)); }
+
+// ───────── world.js ─────────
+// ==================== WORLD STATE ====================
+
+const world = { w: 2000, h: 1500 };
+
+let cells = [];
+let plants = [];
+let meats = [];      // ошмётки убитых клеток
+let particles = [];
+let walls = [];      // палки: { x1, y1, x2, y2, r }
+let sources = [];    // точки спавна растений
+let simTime = 0;
+let nextId = 1;
+let paused = false;
+let timeScale = 1;
+
+// Всё, что считает статистика и показывает итоговый экран
+const stats = {
+  kills: 0, births: 0, starve: 0, erased: 0, spawned: 0,
+  maxAge: 0, maxAgeId: 0, maxKills: 0, maxKillsId: 0, maxKids: 0, maxKidsId: 0, maxGen: 0,
+};
+
+// ==================== SPATIAL GRID ====================
+// Равномерная сетка корзин. Используется для клеток, растений и мяса,
+// чтобы ИИ не перебирал весь мир, а смотрел только в окрестности.
+class Grid {
+  constructor(cs) { this.cs = cs; this.gw = 1; this.gh = 1; this.b = [[]]; this.used = []; }
+  resize(w, h) {
+    this.gw = Math.ceil(w / this.cs) + 1;
+    this.gh = Math.ceil(h / this.cs) + 1;
+    this.b = new Array(this.gw * this.gh);
+    for (let i = 0; i < this.b.length; i++) this.b[i] = [];
+    this.used.length = 0;
+  }
+  clear() {
+    for (let k = 0; k < this.used.length; k++) this.b[this.used[k]].length = 0;
+    this.used.length = 0;
+  }
+  add(o) {
+    let gx = (o.x / this.cs) | 0, gy = (o.y / this.cs) | 0;
+    if (gx < 0) gx = 0; else if (gx >= this.gw) gx = this.gw - 1;
+    if (gy < 0) gy = 0; else if (gy >= this.gh) gy = this.gh - 1;
+    const i = gy * this.gw + gx;
+    const arr = this.b[i];
+    if (arr.length === 0) this.used.push(i);
+    arr.push(o);
+  }
+  // Все объекты из корзин, пересекающих квадрат со стороной 2r (грубо, без точной проверки расстояния)
+  collect(x, y, r, out) {
+    out.length = 0;
+    const cs = this.cs;
+    const x0 = Math.max(0, ((x - r) / cs) | 0), x1 = Math.min(this.gw - 1, ((x + r) / cs) | 0);
+    const y0 = Math.max(0, ((y - r) / cs) | 0), y1 = Math.min(this.gh - 1, ((y + r) / cs) | 0);
+    for (let gy = y0; gy <= y1; gy++) {
+      const row = gy * this.gw;
+      for (let gx = x0; gx <= x1; gx++) {
+        const arr = this.b[row + gx];
+        for (let k = 0; k < arr.length; k++) out.push(arr[k]);
+      }
+    }
+    return out;
+  }
+  // Ближайший живой объект в радиусе r, удовлетворяющий pred
+  nearest(x, y, r, pred) {
+    const cs = this.cs;
+    const x0 = Math.max(0, ((x - r) / cs) | 0), x1 = Math.min(this.gw - 1, ((x + r) / cs) | 0);
+    const y0 = Math.max(0, ((y - r) / cs) | 0), y1 = Math.min(this.gh - 1, ((y + r) / cs) | 0);
+    let best = null, bestD = r * r;
+    for (let gy = y0; gy <= y1; gy++) {
+      const row = gy * this.gw;
+      for (let gx = x0; gx <= x1; gx++) {
+        const arr = this.b[row + gx];
+        for (let k = 0; k < arr.length; k++) {
+          const o = arr[k];
+          if (!o.alive) continue;
+          const dx = o.x - x, dy = o.y - y, d2 = dx * dx + dy * dy;
+          if (d2 < bestD && (!pred || pred(o))) { bestD = d2; best = o; }
+        }
+      }
+    }
+    return best;
+  }
+}
+
+const cellGrid = new Grid(100);
+const plantGrid = new Grid(100);
+const meatGrid = new Grid(100);
+
+function rebuildGrids() {
+  cellGrid.clear(); plantGrid.clear(); meatGrid.clear();
+  for (const c of cells) if (c.alive) cellGrid.add(c);
+  for (const p of plants) if (p.alive) plantGrid.add(p);
+  for (const m of meats) if (m.alive) meatGrid.add(m);
+}
+
+// ==================== LINEAGE ====================
+// Родословная: id → { id, parent, children[], cell, gen }. Хранится и для умерших,
+// чтобы подсвечивать живых предков/потомков через мёртвых промежуточных.
+const lineage = new Map();
+const LINEAGE_CAP = 40000;
+
+function pruneLineage() {
+  if (lineage.size <= LINEAGE_CAP) return;
+  for (const [id, rec] of lineage) {
+    if (!rec.cell) lineage.delete(id);
+    if (lineage.size <= LINEAGE_CAP * 0.8) break;
+  }
+}
+
+// Средние гены по поколениям (при рождении) — для графиков эволюции
+const genAcc = [];
+function recordGeneration(gen, genome) {
+  let a = genAcc[gen];
+  if (!a) a = genAcc[gen] = { n: 0, sum: [0, 0, 0, 0, 0, 0] };
+  a.n++;
+  for (let i = 0; i < 6; i++) a.sum[i] += genome[i];
+  if (gen > stats.maxGen) stats.maxGen = gen;
+}
+
+// ==================== CELL ====================
+// fixedId/restore — при загрузке сейва: сохраняем прежний id и не трогаем родословную (она восстанавливается отдельно)
+function createCell(x, y, genome, parent, fixedId) {
+  const g = (genome || randomGenome()).slice();
+  const strength = g[0], armor = g[1], regen = g[2];
+  const mass = 1 + armor / 255 * 1.4 + strength / 255 * 0.35;   // броня — основной вес, но и мышцы весят
+  const maxHp = 90 + armor * 0.6;
+  const maxEnergy = 170 + regen * 0.1;          // запас энергии почти одинаковый: сила больше не даёт «бесплатный» бак
+  const gen = parent ? parent.gen + 1 : 0;
+
+  const c = {
+    id: fixedId || nextId++,
+    x, y, vx: 0, vy: 0,
+    radius: S.cellSize,
+    genome: g,
+    color: bodyColor(g), nucColor: nucleusColor(g),
+    // тело
+    strength, armor, regen,
+    // ядро
+    courage: g[3], sociability: g[4], greed: g[5],
+    // физиология
+    mass, maxHp, hp: maxHp, hardHp: 0,
+    maxEnergy, energy: maxEnergy * 0.7,
+    speed: (300 - armor * 0.45) / mass,
+    attackDamage: 6 + strength / 255 * 36,
+    attackCooldown: 0.25 + strength / 255 * 1.4,
+    knockback: 40 + strength * 0.12,
+    regenRate: regen / 255 * 38,
+    // у каждой статы своя цена: мышцы, мембрана и регенерация — всё ест энергию (реген — больше всех)
+    baseUpkeep: 1.0 + strength / 255 * 0.9 + armor / 255 * 0.3 + regen / 255 * 0.8,
+    // состояние
+    alive: true, age: 0, gen,
+    parent: parent ? parent.id : null,
+    children: [],
+    kills: 0,
+    attackTimer: 0,
+    combatTimer: 99,        // секунд с последнего боя
+    lastAttacker: null, lastAttackedAt: -99,
+    lastHitAt: -99,
+    meatEaten: 0, plantEaten: 0,
+    // ИИ
+    task: 'idle', taskTarget: null, teammate: null,
+    thinkTimer: Math.random() * 0.15,
+    huntSince: 0, huntCooldownUntil: 0, retreatUntil: 0,
+    route: [],              // [x0,y0,x1,y1,...] — путь к цели, последняя пара — сама цель
+    near: [],               // соседи в зоне видимости (обновляется в think)
+    nobst: [],              // препятствия поблизости (обновляется в think)
+    wanderAngle: Math.random() * Math.PI * 2, wanderTimer: 0,
+    dancePhase: Math.random() * 6.28,
+    fleeX: x, fleeY: y,
+    pressX: 0, pressY: 0, press: false,
+    kiting: false,
+    ignore: null,           // Map цель → до какого времени игнорируем
+    escapeUntil: 0, escapeAngle: 0, stuck: false, wantsMove: false,
+    px: x, py: y, pxAt: 0,  // для детектора застревания
+    hx: 0, hy: 0,           // сглаженный курс
+    memX: 0, memY: 0, memAt: -999,   // где в последний раз ела
+    exX: x, exY: y, exUntil: 0,      // точка исследования
+    routeFailed: false,
+    pack: 0, leader: false, packRoot: 0,   // стая: размер, вожак ли, id вожака
+    // визуал
+    heartTimer: Math.random() * 3, pulse: 0,
+  };
+
+  if (fixedId) return c;
+  recordGeneration(gen, g);
+  const rec = { id: c.id, parent: c.parent, children: [], cell: c, gen };
+  lineage.set(c.id, rec);
+  if (parent) {
+    const pr = lineage.get(parent.id);
+    if (pr) pr.children.push(c.id);
+    parent.children.push(c.id);
+  }
+  return c;
+}
+
+function refreshCellRadius() { for (const c of cells) c.radius = S.cellSize; }
+
+// ==================== PLANTS / MEAT / SOURCES ====================
+function createPlant(x, y, fat) {
+  return {
+    x, y, radius: 3.5 + Math.random() * 2.5, alive: true,
+    energy: S.plantEnergy * (0.5 + Math.random() * 0.5) * (fat || 1),
+  };
+}
+
+function createSource(x, y) {
+  return { id: nextId++, x, y, r: 18, spawnTimer: Math.random(), alive: true, spawned: 0 };
+}
+
+// Ошмётки: чем больше у клетки было энергии, тем их больше и тем они жирнее
+function spawnMeatDrops(c) {
+  const ratio = clamp(c.energy / c.maxEnergy, 0, 1);
+  const count = Math.floor(2 + ratio * 15);
+  const total = Math.max(0, c.energy) * S.meatYield;
+  if (total < 1) return;
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = 30 + Math.random() * 110;
+    const life = 90 + ratio * 120 + Math.random() * 40;
+    meats.push({
+      x: c.x + Math.cos(a) * (c.radius * 0.6), y: c.y + Math.sin(a) * (c.radius * 0.6),
+      vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      radius: 2.5 + ratio * 3 + Math.random() * 1.5,
+      energy: Math.max(3, (total / count) * (0.5 + Math.random())),
+      life, maxLife: life, alive: true,
+      r: 170 + Math.floor(c.genome[0] * 0.33), gb: 25 + Math.floor(c.genome[2] * 0.2),
+    });
+  }
+  if (meats.length > 2500) meats.splice(0, meats.length - 2500);
+}
+
+// ==================== PARTICLES ====================
+function spawnParticles(x, y, count, color, life, speed, size) {
+  count = Math.round(count * S.particles);
+  if (count <= 0) return;
+  const cap = 1500 * S.particles + 200;
+  if (particles.length > cap) return;
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = speed * (0.3 + Math.random() * 0.7);
+    particles.push({
+      x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      life: life * (0.5 + Math.random() * 0.5), maxLife: life,
+      color, size: size || (1 + Math.random() * 2),
+    });
+  }
+}
+
+function resetWorldState() {
+  cells = []; plants = []; meats = []; particles = []; walls = []; sources = [];
+  lineage.clear(); genAcc.length = 0;
+  simTime = 0; nextId = 1;
+  for (const k in stats) stats[k] = 0;
+  world.w = S.worldW; world.h = S.worldH;
+  cellGrid.resize(world.w, world.h); plantGrid.resize(world.w, world.h); meatGrid.resize(world.w, world.h);
+  obst.length = 0; buildObstGrid(); obstDirty = true;
+}
+
+// ───────── nav.js ─────────
+// ==================== NAVIGATION ====================
+// Препятствия — «палки» (капсулы) и источники (круги = вырожденные капсулы).
+// Маршрут строится жадно: если прямая до цели упирается в препятствие,
+// клетка выбирает ближайший угол обхода и повторяет это для остатка пути.
+
+let obst = [];          // { x1,y1,x2,y2,r }
+let obstDirty = true;
+
+function rebuildObstacles() {
+  obst.length = 0;
+  for (const w of walls) obst.push(w);
+  for (const s of sources) if (s.alive) obst.push({ x1: s.x, y1: s.y, x2: s.x, y2: s.y, r: s.r, src: s });
+  buildObstGrid();
+  obstDirty = false;
+}
+
+// Крупная сетка препятствий: запросы «что рядом с этим отрезком» не перебирают все палки мира
+const OG = 150;
+let ogW = 1, ogH = 1, ogCells = [], ogStamp = 0;
+const _ob = [];
+
+function buildObstGrid() {
+  ogW = Math.ceil(world.w / OG) + 1; ogH = Math.ceil(world.h / OG) + 1;
+  ogCells = new Array(ogW * ogH).fill(null);
+  for (const o of obst) {
+    const x0 = clamp(((Math.min(o.x1, o.x2) - o.r) / OG) | 0, 0, ogW - 1), x1 = clamp(((Math.max(o.x1, o.x2) + o.r) / OG) | 0, 0, ogW - 1);
+    const y0 = clamp(((Math.min(o.y1, o.y2) - o.r) / OG) | 0, 0, ogH - 1), y1 = clamp(((Math.max(o.y1, o.y2) + o.r) / OG) | 0, 0, ogH - 1);
+    for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) {
+      const i = gy * ogW + gx;
+      (ogCells[i] || (ogCells[i] = [])).push(o);
+    }
+  }
+}
+
+// Уникальные препятствия, чьи корзины пересекают прямоугольник
+function obstInBox(x0, y0, x1, y1, out) {
+  out.length = 0;
+  if (obst.length === 0) return out;
+  ogStamp++;
+  const gx0 = clamp((x0 / OG) | 0, 0, ogW - 1), gx1 = clamp((x1 / OG) | 0, 0, ogW - 1);
+  const gy0 = clamp((y0 / OG) | 0, 0, ogH - 1), gy1 = clamp((y1 / OG) | 0, 0, ogH - 1);
+  for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) {
+    const arr = ogCells[gy * ogW + gx];
+    if (!arr) continue;
+    for (let k = 0; k < arr.length; k++) {
+      const o = arr[k];
+      if (o.q !== ogStamp) { o.q = ogStamp; out.push(o); }
+    }
+  }
+  return out;
+}
+
+// ---------- геометрия ----------
+function distPointSeg(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy;
+  let t = l2 > 0 ? ((px - x1) * dx + (py - y1) * dy) / l2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
+}
+
+function segsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+  const d1 = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  const d2 = (bx - ax) * (dy - ay) - (by - ay) * (dx - ax);
+  const d3 = (dx - cx) * (ay - cy) - (dy - cy) * (ax - cx);
+  const d4 = (dx - cx) * (by - cy) - (dy - cy) * (bx - cx);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+
+function segSegDist(ax, ay, bx, by, cx, cy, dx, dy) {
+  if (segsIntersect(ax, ay, bx, by, cx, cy, dx, dy)) return 0;
+  return Math.min(
+    distPointSeg(ax, ay, cx, cy, dx, dy), distPointSeg(bx, by, cx, cy, dx, dy),
+    distPointSeg(cx, cy, ax, ay, bx, by), distPointSeg(dx, dy, ax, ay, bx, by));
+}
+
+const _ib = [];
+function insideObstacle(x, y, margin) {
+  if (obst.length === 0) return false;
+  const list = obstInBox(x - margin, y - margin, x + margin, y + margin, _ib);
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    if (distPointSeg(x, y, o.x1, o.y1, o.x2, o.y2) < o.r + margin) return true;
+  }
+  return false;
+}
+
+function inBounds(x, y, m) { return x >= m && x <= world.w - m && y >= m && y <= world.h - m; }
+
+// Ближайшая допустимая точка рядом с (x,y): не внутри препятствия и не за границей мира
+function findFreePos(x, y, margin) {
+  if (inBounds(x, y, margin) && !insideObstacle(x, y, margin)) return { x, y, ok: true };
+  for (let k = 0; k < 60; k++) {
+    const a = k * 0.7, d = 6 + k * 3;
+    const nx = x + Math.cos(a) * d, ny = y + Math.sin(a) * d;
+    if (inBounds(nx, ny, margin) && !insideObstacle(nx, ny, margin)) return { x: nx, y: ny, ok: true };
+  }
+  return { x, y, ok: false };
+}
+
+// ---------- маршрут ----------
+const _fb = [];
+function firstBlocker(sx, sy, tx, ty, clear) {
+  let best = null, bestD = Infinity;
+  const list = obstInBox(Math.min(sx, tx) - clear - 8, Math.min(sy, ty) - clear - 8, Math.max(sx, tx) + clear + 8, Math.max(sy, ty) + clear + 8, _fb);
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    if (segSegDist(sx, sy, tx, ty, o.x1, o.y1, o.x2, o.y2) < o.r + clear) {
+      const d = distPointSeg(sx, sy, o.x1, o.y1, o.x2, o.y2);
+      if (d < bestD) { bestD = d; best = o; }
+    }
+  }
+  return best;
+}
+
+const _cand = [];
+function detourCandidates(o, sx, sy, R) {
+  _cand.length = 0;
+  const dx = o.x2 - o.x1, dy = o.y2 - o.y1, L = Math.hypot(dx, dy);
+  if (L < 1) {
+    // круг: две точки по бокам относительно направления «от клетки к центру»
+    let ux = o.x1 - sx, uy = o.y1 - sy;
+    const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+    _cand.push(o.x1 - uy * R, o.y1 + ux * R, o.x1 + uy * R, o.y1 - ux * R);
+  } else {
+    const ax = dx / L, ay = dy / L, px = -ay, py = ax;
+    for (let e = 0; e < 2; e++) {
+      const ex = e ? o.x2 : o.x1, ey = e ? o.y2 : o.y1, s = e ? 1 : -1;
+      for (let side = -1; side <= 1; side += 2) {
+        _cand.push(ex + (ax * s + px * side) * R * 0.72, ey + (ay * s + py * side) * R * 0.72);
+      }
+    }
+  }
+  return _cand;
+}
+
+let routeFailed = false;       // последний planRoute не нашёл обхода: цель, вероятно, недостижима
+let _prevWx = NaN, _prevWy = NaN;   // прошлый первый поворот клетки — для гистерезиса (без метаний влево-вправо)
+
+function buildRoute(sx, sy, tx, ty, clear, out, depth) {
+  const o = depth > 0 ? firstBlocker(sx, sy, tx, ty, clear) : null;
+  if (!o) { out.push(tx, ty); return; }
+  const R = (o.r + clear) * 1.5 + 4;
+  const cand = detourCandidates(o, sx, sy, R);
+  let bx = 0, by = 0, bestCost = Infinity;
+  // клетка, прижатая к препятствию, уже ближе порога — требуем лишь не приближаться к нему
+  const thr = Math.min((o.r + clear) * 0.85, distPointSeg(sx, sy, o.x1, o.y1, o.x2, o.y2) * 0.92);
+  for (let i = 0; i < cand.length; i += 2) {
+    const wx = cand[i], wy = cand[i + 1];
+    if (Math.abs(wx - sx) + Math.abs(wy - sy) < 12) continue;      // не топчемся на месте
+    if (!inBounds(wx, wy, 6) || insideObstacle(wx, wy, clear * 0.8)) continue;
+    // первый отрезок не должен упираться в это же препятствие
+    if (segSegDist(sx, sy, wx, wy, o.x1, o.y1, o.x2, o.y2) < thr) continue;
+    let cost = Math.hypot(wx - sx, wy - sy) + Math.hypot(tx - wx, ty - wy);
+    // уже выбранный обход сохраняем, пока он остаётся допустимым
+    if (depth === 3 && Math.abs(wx - _prevWx) + Math.abs(wy - _prevWy) < 90) cost *= 0.75;
+    if (cost < bestCost) { bestCost = cost; bx = wx; by = wy; }
+  }
+  if (bestCost === Infinity) { routeFailed = true; out.push(tx, ty); return; }   // тупик — едем прямо, скользя вдоль препятствия
+  out.push(bx, by);
+  buildRoute(bx, by, tx, ty, clear, out, depth - 1);
+}
+
+function planRoute(c, tx, ty) {
+  const r = c.route;
+  const hadWp = r.length > 2;
+  _prevWx = hadWp ? r[0] : NaN; _prevWy = hadWp ? r[1] : NaN;
+  r.length = 0;
+  routeFailed = false;
+  if (obst.length === 0) { r.push(tx, ty); c.routeFailed = false; return; }
+  // трусливые обходят препятствия дальше
+  const clear = c.radius + 4 + (1 - c.courage / 255) * 14;
+  buildRoute(c.x, c.y, tx, ty, clear, r, 3);
+  c.routeFailed = routeFailed;
+}
+
+// Есть ли препятствие между двумя точками (удар «сквозь стену» невозможен)
+const _lb = [];
+function losBlocked(x1, y1, x2, y2) {
+  if (obst.length === 0) return false;
+  const list = obstInBox(Math.min(x1, x2) - 2, Math.min(y1, y2) - 2, Math.max(x1, x2) + 2, Math.max(y1, y2) + 2, _lb);
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    if (segSegDist(x1, y1, x2, y2, o.x1, o.y1, o.x2, o.y2) < o.r) return true;
+  }
+  return false;
+}
+
+// Короткий список препятствий поблизости (обновляется в think) — чтобы физика не перебирала все палки мира
+function refreshNearObstacles(c) {
+  const list = c.nobst, R = c.radius + 130;
+  list.length = 0;
+  const cand = obstInBox(c.x - R, c.y - R, c.x + R, c.y + R, _nb);
+  for (let i = 0; i < cand.length; i++) {
+    const o = cand[i];
+    if (c.x < Math.min(o.x1, o.x2) - o.r - R || c.x > Math.max(o.x1, o.x2) + o.r + R ||
+        c.y < Math.min(o.y1, o.y2) - o.r - R || c.y > Math.max(o.y1, o.y2) + o.r + R) continue;
+    list.push(o);
+  }
+}
+const _nb = [];
+
+// Скольжение вдоль препятствий и границ: составляющая желаемого движения «в стену» убирается,
+// остаётся движение вдоль неё. Это убирает дрожание и кружение у стен, когда цель по ту сторону.
+// d — направление {x,y}, меняется на месте. Возвращает true, если клетка чем-то зажата.
+function steerAround(c, d) {
+  const pad = c.radius + 6, list = c.nobst;
+  let pinned = false;
+  const slide = (nx, ny, dd, lim) => {           // n — нормаль от препятствия к клетке
+    const dot = d.x * nx + d.y * ny;
+    if (dot < 0) { d.x -= dot * nx; d.y -= dot * ny; pinned = true; }
+    if (dd < lim * 0.85) { const k = (1 - dd / (lim * 0.85)) * 0.8; d.x += nx * k; d.y += ny * k; }
+  };
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i], lim = o.r + pad;
+    if (c.x < Math.min(o.x1, o.x2) - lim || c.x > Math.max(o.x1, o.x2) + lim ||
+        c.y < Math.min(o.y1, o.y2) - lim || c.y > Math.max(o.y1, o.y2) + lim) continue;
+    const sx = o.x2 - o.x1, sy = o.y2 - o.y1, l2 = sx * sx + sy * sy;
+    let u = l2 > 0 ? ((c.x - o.x1) * sx + (c.y - o.y1) * sy) / l2 : 0;
+    u = u < 0 ? 0 : u > 1 ? 1 : u;
+    const nx = c.x - (o.x1 + sx * u), ny = c.y - (o.y1 + sy * u), dd = Math.hypot(nx, ny);
+    if (dd < lim && dd > 0.01) slide(nx / dd, ny / dd, dd, lim);
+  }
+  const bm = c.radius + 8;
+  if (c.x < bm) slide(1, 0, c.x, bm); if (c.x > world.w - bm) slide(-1, 0, world.w - c.x, bm);
+  if (c.y < bm) slide(0, 1, c.y, bm); if (c.y > world.h - bm) slide(0, -1, world.h - c.y, bm);
+  return pinned;
+}
+
+// Куда лучше всего «выталкивать» цель ударами: к ближайшей стене/границе (для синих-танков)
+const _pd = [];
+function nearestPushDir(t, maxD) {
+  let bd = maxD, nx = 0, ny = 0;
+  // границы мира: расстояние и направление к границе
+  if (t.x < bd) { bd = t.x; nx = -1; ny = 0; }
+  if (world.w - t.x < bd) { bd = world.w - t.x; nx = 1; ny = 0; }
+  if (t.y < bd) { bd = t.y; nx = 0; ny = -1; }
+  if (world.h - t.y < bd) { bd = world.h - t.y; nx = 0; ny = 1; }
+  const near = obstInBox(t.x - maxD, t.y - maxD, t.x + maxD, t.y + maxD, _pd);
+  for (let i = 0; i < near.length; i++) {
+    const o = near[i];
+    const d = distPointSeg(t.x, t.y, o.x1, o.y1, o.x2, o.y2) - o.r;
+    if (d < bd) {
+      const sx = o.x2 - o.x1, sy = o.y2 - o.y1, l2 = sx * sx + sy * sy;
+      let u = l2 > 0 ? ((t.x - o.x1) * sx + (t.y - o.y1) * sy) / l2 : 0;
+      u = u < 0 ? 0 : u > 1 ? 1 : u;
+      const vx = o.x1 + sx * u - t.x, vy = o.y1 + sy * u - t.y, vl = Math.hypot(vx, vy) || 1;
+      bd = d; nx = vx / vl; ny = vy / vl;
+    }
+  }
+  return bd < maxD ? { nx, ny, d: bd } : null;
+}
+
+// ───────── ai.js ─────────
+// ==================== AI ====================
+// think() — редкое принятие решений (≈7 раз в секунду на клетку): выбирает задачу и цель.
+// move()  — каждый тик: едет к цели по маршруту, держит дистанцию, скользит вдоль препятствий.
+// Правила простые и нечёткие, а стаи, вожаки и тактики возникают сами.
+
+const _tmp = [];
+const _dir = { x: 0, y: 0 };
+
+function thinkInterval() { return 0.12 + Math.random() * 0.08; }
+
+// ---------- «чёрный список» целей: недостижимое или бесполезное временно игнорируем ----------
+function ignored(c, o) {
+  const m = c.ignore;
+  if (!m) return false;
+  const t = m.get(o);
+  if (t === undefined) return false;
+  if (t < simTime) { m.delete(o); return false; }
+  return true;
+}
+function ignoreTarget(c, o, secs) {
+  const m = c.ignore || (c.ignore = new Map());
+  if (m.size > 24) for (const [k, t] of m) if (t < simTime || !k.alive) m.delete(k);
+  m.set(o, simTime + secs);
+}
+
+function retaliationTarget(c) {
+  const a = c.lastAttacker;
+  return a && a.alive && simTime - c.lastAttackedAt < 2.5 ? a : null;
+}
+
+// ---------- оценка схватки ----------
+// Клетка знает свои статы и видит чужой цвет: прикидывает, кто кого убьёт быстрее (с бронёй, критами и регеном в бою)
+function dps(a, b) {
+  const def = b.armor / 255, pen = a.strength / 255;
+  const crit = S.critChance * (1 + pen * 0.6) * (1 - def * 0.7);
+  return a.attackDamage * S.dmgMult * (1 - def * 0.55) * (1 + crit * 1.2) / a.attackCooldown;
+}
+function fightRegen(c) { return c.regenRate * (0.15 + 0.25 * c.regen / 255); }
+// > 1 — я, скорее всего, побеждаю; < 1 — проигрываю
+function fightOdds(c, o) {
+  const iKillIn = o.hp / Math.max(0.5, dps(c, o) - fightRegen(o));
+  const heKillsIn = c.hp / Math.max(0.5, dps(o, c) - fightRegen(c));
+  return heKillsIn / iKillIn;
+}
+
+// Оценка добычи: чем меньше, тем привлекательнее
+function preyScore(c, o, d) {
+  let s = d * (1 + o.armor / 255 * 0.8);
+  if (o.hp < o.maxHp * 0.5) s *= 0.6;
+  s *= 1 + Math.max(0, o.strength - c.strength) / 150;
+  return s;
+}
+
+function pickPrey(c, desperate) {
+  let best = null, bestS = Infinity;
+  for (const o of c.near) {
+    if (o === c.teammate || ignored(c, o)) continue;
+    // не лезет в заведомо проигрышный бой; смелые рискуют больше
+    if (!desperate && fightOdds(c, o) < lerp(1.4, 0.6, c.courage / 255)) continue;
+    // свои (почти идентичный геном) — не добыча, если только не умираешь с голоду
+    if (!desperate && genomeSimilarity(c.genome, o.genome) > 0.9) continue;
+    const d = Math.hypot(o.x - c.x, o.y - c.y);
+    const s = preyScore(c, o, d);
+    if (s < bestS) { bestS = s; best = o; }
+  }
+  return best;
+}
+
+function startHunt(c, target) {
+  if (c.task !== 'hunt' || c.taskTarget !== target) c.huntSince = simTime;
+  c.task = 'hunt'; c.taskTarget = target;
+}
+
+function huntStillValid(c, sight) {
+  const t = c.taskTarget;
+  if (!t || !t.alive || t === c.teammate || ignored(c, t)) return false;
+  const d = Math.hypot(t.x - c.x, t.y - c.y);
+  if (d > sight * 1.5) return false;
+  // охотник, который давно не попадает, бросает погоню
+  if (simTime - Math.max(c.huntSince, c.lastHitAt) > 10) { c.huntCooldownUntil = simTime + 6; return false; }
+  // умирающий от голода не гонится за далёкой целью
+  if (c.energy < c.maxEnergy * 0.08 && d > 80) return false;
+  return true;
+}
+
+function findFood(c, sight, meatPref, plantPenalty) {
+  const free = o => !ignored(c, o) && !insideObstacle(o.x, o.y, c.radius + 1);
+  const p = plantGrid.nearest(c.x, c.y, sight, free);
+  const m = meatGrid.nearest(c.x, c.y, sight, free);
+  if (!p && !m) return null;
+  const pd = p ? Math.hypot(p.x - c.x, p.y - c.y) * (meatPref ? 1.5 : 1) * plantPenalty : Infinity;
+  const md = m ? Math.hypot(m.x - c.x, m.y - c.y) * (meatPref ? 0.6 : 1.1) : Infinity;
+  return md < pd ? m : p;
+}
+
+function tryTeamUp(c, ef) {
+  if (c.teammate || ef < 0.4) return;
+  const want = (c.sociability / 255) * S.sociality;
+  if (c.sociability < 90 || Math.random() > want * 0.2) return;
+  for (const o of c.near) {
+    if (o.taskTarget === c || o.energy < o.maxEnergy * 0.4 || ignored(c, o)) continue;
+    if (o.teammate === c) continue;                    // уже ведёт за мной — зеркалить не надо
+    const sim = genomeSimilarity(c.genome, o.genome);
+    if (sim < 0.45) continue;
+    if ((c.sociability / 255) * (o.sociability / 255) * sim * S.sociality < 0.12) continue;
+    c.teammate = o;
+    return;
+  }
+}
+
+// ---------- застревание ----------
+// Направление от ближайшей стены/границы (куда выбираться, когда зажало)
+function awayAngle(c) {
+  let ax = 0, ay = 0;
+  for (const o of c.nobst) {
+    const sx = o.x2 - o.x1, sy = o.y2 - o.y1, l2 = sx * sx + sy * sy;
+    let u = l2 > 0 ? ((c.x - o.x1) * sx + (c.y - o.y1) * sy) / l2 : 0;
+    u = u < 0 ? 0 : u > 1 ? 1 : u;
+    const nx = c.x - (o.x1 + sx * u), ny = c.y - (o.y1 + sy * u), d = Math.hypot(nx, ny) || 1;
+    ax += nx / d / (d + 10); ay += ny / d / (d + 10);
+  }
+  if (c.x < 80) ax += 1; if (c.x > world.w - 80) ax -= 1;
+  if (c.y < 80) ay += 1; if (c.y > world.h - 80) ay -= 1;
+  if (!ax && !ay) return Math.random() * Math.PI * 2;
+  return Math.atan2(ay, ax) + (Math.random() - 0.5) * 1.2;
+}
+
+function onStuck(c) {
+  const t = c.taskTarget;
+  if (t && (c.task === 'hunt' || c.task === 'forage' || c.task === 'forage_meat' || c.task === 'teamup')) {
+    ignoreTarget(c, t, 10);                       // цель, к которой не пробиться, — в чёрный список
+    if (c.task === 'teamup') c.teammate = null;
+    if (c.task === 'hunt') c.huntCooldownUntil = simTime + 4;
+  }
+  c.escapeUntil = simTime + 1.4;
+  c.escapeAngle = awayAngle(c);
+}
+
+// ---------- исследование: идём к памяти о еде, к источнику или просто вперёд ----------
+function pickExplorePoint(c, sight) {
+  let x, y;
+  const mem = simTime - c.memAt < 90 && Math.hypot(c.memX - c.x, c.memY - c.y) > 90 && Math.random() < 0.6;
+  if (mem) { x = c.memX + rand(-70, 70); y = c.memY + rand(-70, 70); }
+  else {
+    let best = null, bd = sight * 3;
+    for (const s of sources) {
+      if (!s.alive) continue;
+      const d = Math.hypot(s.x - c.x, s.y - c.y);
+      if (d < bd && d > s.r + 80) { bd = d; best = s; }
+    }
+    if (best && Math.random() < 0.7) {
+      const a = Math.random() * Math.PI * 2, r = best.r + 20 + Math.random() * S.sourceRadius * 0.8;
+      x = best.x + Math.cos(a) * r; y = best.y + Math.sin(a) * r;
+    } else {
+      const a = c.wanderAngle + rand(-1.1, 1.1), L = rand(250, 600);
+      x = c.x + Math.cos(a) * L; y = c.y + Math.sin(a) * L;
+    }
+  }
+  const pos = findFreePos(clamp(x, 40, world.w - 40), clamp(y, 40, world.h - 40), c.radius + 4);
+  c.exX = pos.x; c.exY = pos.y; c.exUntil = simTime + rand(6, 12);
+  c.wanderAngle = Math.atan2(c.exY - c.y, c.exX - c.x);
+}
+
+function planHunt(c) {
+  const t = c.taskTarget;
+  // Синие давят противника к стене/опасности: заходят с противоположной от неё стороны
+  c.press = false;
+  if (c.armor > 140) {
+    const p = nearestPushDir(t, 260);
+    if (p) { c.press = true; c.pressX = p.nx; c.pressY = p.ny; }
+  }
+  const touch = c.radius + t.radius + 4;
+  const tx = c.press ? t.x - c.pressX * touch : t.x, ty = c.press ? t.y - c.pressY * touch : t.y;
+  planRoute(c, tx, ty);
+}
+
+// Если обхода не нашлось, цель, скорее всего, за стеной: бросаем её, а не бьёмся об препятствие
+function routeGaveUp(c) {
+  if (!c.routeFailed || !c.taskTarget) return false;
+  ignoreTarget(c, c.taskTarget, 8);
+  if (c.task === 'teamup') c.teammate = null;
+  c.task = 'idle'; c.taskTarget = null; c.route.length = 0;
+  return true;
+}
+
+function think(c) {
+  const sight = S.sight;
+  // охота закончена (жертва мертва) — короткая передышка, чтобы не вырезать всех подряд
+  if (c.task === 'hunt' && c.taskTarget && !c.taskTarget.alive) {
+    c.huntCooldownUntil = simTime + 3 + Math.random() * 4;
+    c.task = 'idle'; c.taskTarget = null;
+  }
+  refreshNearObstacles(c);
+
+  cellGrid.collect(c.x, c.y, sight, _tmp);
+  const near = c.near; near.length = 0;
+  let threat = null, threatD = Infinity;
+  for (let i = 0; i < _tmp.length; i++) {
+    const o = _tmp[i];
+    if (o === c || !o.alive) continue;
+    const d = Math.hypot(o.x - c.x, o.y - c.y);
+    if (d >= sight) continue;
+    near.push(o);
+    if (o.task === 'hunt' && o.taskTarget === c && d < threatD) { threat = o; threatD = d; }
+  }
+  if (!threat) threat = retaliationTarget(c);
+
+  // проверка прогресса раз в секунду: хотел ехать, а стоит на месте — значит, зажат
+  c.stuck = false;
+  if (simTime - c.pxAt >= 1) {
+    c.stuck = c.wantsMove && Math.hypot(c.x - c.px, c.y - c.py) < 8;
+    c.px = c.x; c.py = c.y; c.pxAt = simTime;
+    if (c.stuck) onStuck(c);
+  }
+
+  const ef = c.energy / c.maxEnergy, hf = c.hp / c.maxHp;
+  const greedy = c.greed / 255;
+  const hungryThr = 0.3 + greedy * 0.45;               // прожорливые идут есть раньше
+  const isHungry = ef < hungryThr;
+  const veryHungry = ef < 0.22;
+  // Смелые отступают при бóльших потерях HP; регенераторов потери пугают меньше
+  let retreatThr = lerp(0.5, 0.1, c.courage / 255) * (1 - 0.35 * c.regen / 255);
+  // проигрывает схватку — отходит раньше (смелость частично глушит это)
+  if (threat) {
+    const odds = fightOdds(c, threat);
+    if (odds < 1) retreatThr = Math.min(0.85, retreatThr + (1 - odds) * 0.45 * (1 - c.courage / 255 * 0.6));
+  }
+
+  // ── Связи с товарищем ──
+  if (c.teammate && (!c.teammate.alive || dist(c, c.teammate) > sight * 1.6 || (veryHungry && Math.random() < 0.08)))
+    c.teammate = null;
+
+  // ── 1. Отступление ──
+  if (threat && (hf < retreatThr || (c.task === 'retreat' && hf < retreatThr + 0.15 && simTime < c.retreatUntil))) {
+    if (c.task !== 'retreat') c.retreatUntil = simTime + 2.5;
+    let fx = c.x - threat.x, fy = c.y - threat.y;
+    const fl = Math.hypot(fx, fy) || 1; fx /= fl; fy /= fl;
+    for (const o of near) {
+      const d = Math.hypot(c.x - o.x, c.y - o.y);
+      if (d < 140 && d > 0 && o !== threat) { fx += (c.x - o.x) / d * (1 - d / 140) * 0.5; fy += (c.y - o.y) / d * (1 - d / 140) * 0.5; }
+    }
+    const l = Math.hypot(fx, fy) || 1;
+    c.fleeX = clamp(c.x + fx / l * 240, 40, world.w - 40);
+    c.fleeY = clamp(c.y + fy / l * 240, 40, world.h - 40);
+    // загнан в угол (некуда бежать или зажат) — отчаянно дерётся
+    if (c.stuck || Math.hypot(c.fleeX - c.x, c.fleeY - c.y) < 70) {
+      startHunt(c, threat); planHunt(c); return;
+    }
+    c.task = 'retreat'; c.taskTarget = threat;
+    planRoute(c, c.fleeX, c.fleeY);
+    if (c.routeFailed) { startHunt(c, threat); planHunt(c); }
+    return;
+  }
+
+  // ── 2. Ответить обидчику (даже если он «друг») ──
+  const rt = retaliationTarget(c);
+  if (rt && c.taskTarget !== rt && Math.hypot(rt.x - c.x, rt.y - c.y) < sight && !ignored(c, rt)) {
+    if (rt === c.teammate) c.teammate = null;
+    startHunt(c, rt);
+  }
+
+  // ── 2б. Выбираемся из тупика ──
+  if (simTime < c.escapeUntil && !rt) {
+    c.task = 'explore'; c.taskTarget = null;
+    c.exX = clamp(c.x + Math.cos(c.escapeAngle) * 160, 30, world.w - 30);
+    c.exY = clamp(c.y + Math.sin(c.escapeAngle) * 160, 30, world.h - 30);
+    c.exUntil = c.escapeUntil;
+    c.route.length = 0; c.route.push(c.exX, c.exY);
+    return;
+  }
+
+  // ── 3. Продолжать начатую охоту (цель не меняется, пока её не убили или не перебили приоритеты) ──
+  if (c.task === 'hunt' && huntStillValid(c, sight)) {
+    planHunt(c);
+    if (!routeGaveUp(c)) return;
+  }
+
+  // ── 4. Помочь товарищу: бить ту же цель / того, кто бьёт его ──
+  const tm = c.teammate;
+  if (tm && tm.alive) {
+    const assist = tm.task === 'hunt' && tm.taskTarget && tm.taskTarget.alive && tm.taskTarget !== c
+      ? tm.taskTarget : retaliationTarget(tm);
+    if (assist && assist !== c && assist !== tm && !ignored(c, assist) && Math.random() < (c.sociability / 255) * S.sociality * 0.6 &&
+        simTime >= c.huntCooldownUntil && Math.hypot(assist.x - c.x, assist.y - c.y) < sight) {
+      startHunt(c, assist); planHunt(c);
+      if (!routeGaveUp(c)) return;
+    }
+  }
+
+  // ── 5. Выйти на охоту ──
+  // Смелость тянет в бой, стайность гасит беспричинную агрессию, голод злит
+  const aggr = (c.courage / 255) * (1 - 0.55 * c.sociability / 255) * S.aggression;
+  if (near.length && simTime >= c.huntCooldownUntil &&
+      Math.random() < Math.pow(aggr * (isHungry ? 1.5 : 0.5), 1.5) * 0.14) {
+    const prey = pickPrey(c, false);
+    if (prey) { startHunt(c, prey); planHunt(c); if (!routeGaveUp(c)) return; }
+  }
+
+  // ── 6. Еда ──
+  if (isHungry) {
+    const meatPref = c.courage > 110 || c.regen > 150;
+    let plantPenalty = 1;
+    if (S.plantNerf && c.regen > 120) {
+      const tot = c.meatEaten + c.plantEaten + 0.01;
+      plantPenalty = 1 + (c.plantEaten / tot) * 1.5;   // регенераторы сами тянутся к мясу
+    }
+    let food = c.taskTarget && c.taskTarget.alive && (c.task === 'forage' || c.task === 'forage_meat') && !ignored(c, c.taskTarget) ? c.taskTarget : null;
+    if (food && Math.hypot(food.x - c.x, food.y - c.y) > sight * 2.2) food = null;   // помним цель, пока обходим препятствие
+    if (!food) food = findFood(c, sight, meatPref, plantPenalty);
+    if (food) {
+      c.task = food.life !== undefined ? 'forage_meat' : 'forage';
+      c.taskTarget = food;
+      planRoute(c, food.x, food.y);
+      if (!routeGaveUp(c)) return;
+    }
+    // еды не видно: голодный отчаянно нападает на кого угодно, иначе ищет еду
+    if (veryHungry && near.length && c.courage > 40 && simTime >= c.huntCooldownUntil) {
+      const prey = pickPrey(c, true);
+      if (prey) { startHunt(c, prey); planHunt(c); if (!routeGaveUp(c)) return; }
+    }
+    if (c.task !== 'explore' || simTime > c.exUntil || Math.hypot(c.exX - c.x, c.exY - c.y) < 40 || c.routeFailed) {
+      c.task = 'explore'; c.taskTarget = null;
+      pickExplorePoint(c, sight);
+    }
+    planRoute(c, c.exX, c.exY);
+    if (c.routeFailed) c.exUntil = 0;
+    return;
+  }
+
+  // ── 7. Держаться товарища / завести товарища ──
+  tryTeamUp(c, ef);
+  if (c.teammate) {
+    c.task = 'teamup'; c.taskTarget = c.teammate;
+    planRoute(c, c.teammate.x, c.teammate.y);
+    if (!routeGaveUp(c)) return;
+  }
+
+  // ── Ничего срочного: танцуем ──
+  c.task = 'idle'; c.taskTarget = null; c.route.length = 0;
+}
+
+// ==================== MOVEMENT ====================
+function liveGoal(c, g) {
+  // g — выходной объект {x, y, speed, hold}
+  g.hold = false; g.speed = 1;
+  switch (c.task) {
+    case 'hunt': {
+      const t = c.taskTarget;
+      if (!t || !t.alive) return false;
+      const dx = t.x - c.x, dy = t.y - c.y, d = Math.hypot(dx, dy) || 1;
+      const touch = c.radius + t.radius + 4;
+      c.kiting = false;
+      // Сильные (красные) бьют и отъезжают на КД, а не стоят в противнике
+      if (c.strength > 110 && c.attackTimer > 0.2 && d < touch * 3) {
+        c.kiting = true;
+        g.x = c.x - dx / d * 100; g.y = c.y - dy / d * 100; g.speed = 0.85;
+        return true;
+      }
+      if (c.press) { g.x = t.x - c.pressX * touch; g.y = t.y - c.pressY * touch; }
+      else { g.x = t.x; g.y = t.y; }
+      if (d < touch * 0.9) g.hold = true;     // уже вплотную — не проскакиваем сквозь
+      return true;
+    }
+    case 'forage': case 'forage_meat': {
+      const t = c.taskTarget;
+      if (!t || !t.alive) return false;
+      g.x = t.x; g.y = t.y; g.speed = 0.8; return true;
+    }
+    case 'retreat': g.x = c.fleeX; g.y = c.fleeY; return true;
+    case 'teamup': {
+      const t = c.taskTarget;
+      if (!t || !t.alive) return false;
+      const d = Math.hypot(t.x - c.x, t.y - c.y);
+      g.x = t.x; g.y = t.y; g.speed = d > 160 ? 1 : 0.7;
+      if (d < 55) g.hold = true;
+      return true;
+    }
+    case 'explore':
+      g.x = c.exX; g.y = c.exY; g.speed = 0.8;
+      if (Math.hypot(c.exX - c.x, c.exY - c.y) < 25) g.hold = true;
+      return true;
+    default: return false;
+  }
+}
+
+const _goal = { x: 0, y: 0, speed: 1, hold: false };
+
+function move(c, dt) {
+  let dirX = 0, dirY = 0, moving = false, speedMul = 1, accelMul = 4;
+  c.wantsMove = false;
+
+  if (c.task === 'idle') {
+    // Танец: ритмичное «туда-сюда», ядро пульсирует (см. рендер)
+    c.dancePhase += dt * 5;
+    c.wanderTimer -= dt;
+    if (c.wanderTimer <= 0) { c.wanderAngle += (Math.random() - 0.5) * 2.2; c.wanderTimer = 1.5 + Math.random() * 2.5; }
+    const s = Math.sin(c.dancePhase);
+    dirX = Math.cos(c.wanderAngle) * s; dirY = Math.sin(c.wanderAngle) * s;
+    moving = true; speedMul = 0.35; accelMul = 3;
+  } else if (liveGoal(c, _goal)) {
+    let gx = _goal.x, gy = _goal.y;
+    const r = c.route;
+    if (r.length > 2 && !c.kiting) {             // есть промежуточные точки объезда
+      if (Math.hypot(r[0] - c.x, r[1] - c.y) < 16) r.splice(0, 2);
+      if (r.length > 2) { gx = r[0]; gy = r[1]; }
+    }
+    const dx = gx - c.x, dy = gy - c.y, d = Math.hypot(dx, dy) || 1;
+    dirX = dx / d; dirY = dy / d;
+    speedMul = _goal.speed;
+    moving = !_goal.hold;
+    // «хочет ехать» (для детектора застревания): не стоит вплотную к своей цели и не держит дистанцию
+    c.wantsMove = moving && !c.kiting;
+    if (c.task === 'teamup' && !moving) c.dancePhase += dt * 5;
+  }
+
+  if (moving || c.task === 'hunt') {
+    // Трусливые объезжают живность дальше
+    const cow = 1 - c.courage / 255;
+    if (cow > 0.2 && c.near.length) {
+      const R0 = c.radius * 2 + cow * 60;
+      let n = 0;
+      for (const o of c.near) {
+        if (o === c.taskTarget || o === c.teammate || !o.alive) continue;
+        const ox = c.x - o.x, oy = c.y - o.y, od = Math.hypot(ox, oy);
+        if (od < R0 && od > 0.1) { const k = (1 - od / R0) * cow * 1.8; dirX += ox / od * k; dirY += oy / od * k; }
+        if (++n > 12) break;
+      }
+    }
+    const dl0 = Math.hypot(dirX, dirY);
+    if (dl0 > 1) { dirX /= dl0; dirY /= dl0; }
+    // скольжение вдоль стен: никакого дрожания и кружения у препятствий
+    _dir.x = dirX; _dir.y = dirY;
+    steerAround(c, _dir);
+    dirX = _dir.x; dirY = _dir.y;
+    const dl = Math.hypot(dirX, dirY);
+    if (dl > 1) { dirX /= dl; dirY /= dl; }
+  }
+
+  // курс меняется плавно — резкие повороты и были причиной «трясучки»
+  const k = 1 - Math.exp(-dt * 9);
+  c.hx += (dirX - c.hx) * k; c.hy += (dirY - c.hy) * k;
+
+  const sp = c.speed * S.speedMult;
+  if (moving) {
+    c.vx += c.hx * sp * accelMul * dt;
+    c.vy += c.hy * sp * accelMul * dt;
+  }
+  const v = Math.hypot(c.vx, c.vy), vmax = sp * speedMul;
+  if (v > vmax) { c.vx *= vmax / v; c.vy *= vmax / v; }
+  const fr = Math.pow(0.93, dt * 60);
+  c.vx *= fr; c.vy *= fr;
+  c.x += c.vx * dt; c.y += c.vy * dt;
+
+  // стенки мира: просто не пускают
+  const R = c.radius;
+  if (c.x < R) { c.x = R; c.vx = Math.abs(c.vx) * 0.4; }
+  if (c.x > world.w - R) { c.x = world.w - R; c.vx = -Math.abs(c.vx) * 0.4; }
+  if (c.y < R) { c.y = R; c.vy = Math.abs(c.vy) * 0.4; }
+  if (c.y > world.h - R) { c.y = world.h - R; c.vy = -Math.abs(c.vy) * 0.4; }
+
+  // жёсткое выталкивание из палок и источников
+  const nob = c.nobst;
+  for (let i = 0; i < nob.length; i++) {
+    const o = nob[i], lim = R + o.r;
+    if (c.x < Math.min(o.x1, o.x2) - lim || c.x > Math.max(o.x1, o.x2) + lim ||
+        c.y < Math.min(o.y1, o.y2) - lim || c.y > Math.max(o.y1, o.y2) + lim) continue;
+    const sx = o.x2 - o.x1, sy = o.y2 - o.y1, l2 = sx * sx + sy * sy;
+    let u = l2 > 0 ? ((c.x - o.x1) * sx + (c.y - o.y1) * sy) / l2 : 0;
+    u = u < 0 ? 0 : u > 1 ? 1 : u;
+    const nx = c.x - (o.x1 + sx * u), ny = c.y - (o.y1 + sy * u), d = Math.hypot(nx, ny);
+    if (d < lim) {
+      let ux, uy;
+      if (d > 0.001) { ux = nx / d; uy = ny / d; } else { ux = 1; uy = 0; }
+      c.x = o.x1 + sx * u + ux * lim; c.y = o.y1 + sy * u + uy * lim;
+      const dot = c.vx * ux + c.vy * uy;
+      if (dot < 0) { c.vx -= dot * ux * 1.05; c.vy -= dot * uy * 1.05; }   // гасим скорость «в стену», не отскакивая
+    }
+  }
+}
+
+// ───────── sim.js ─────────
+// ==================== SIMULATION ====================
+// Бой, энергия, размножение, спавн и главный шаг симуляции. Шаг фиксированный (1/30 с),
+// ускорение времени = больше шагов за кадр, поэтому механики не ломаются на любой скорости.
+
+const FIXED_DT = 1 / 30;
+
+// ---------- хуки для модов ----------
+const hooks = { tick: [], birth: [], death: [], hit: [], spawn: [] };
+function emit(name, a, b, c, d) {
+  const list = hooks[name];
+  for (let i = 0; i < list.length; i++) {
+    try { list[i](a, b, c, d); } catch (e) { console.error('[mod]', name, e); }
+  }
+}
+
+// ---------- смерть ----------
+function killCell(c, cause, killer) {
+  if (!c.alive) return;
+  c.alive = false;
+  if (cause === 'kill') {
+    stats.kills++;
+    if (killer) {
+      killer.kills++;
+      if (killer.kills > stats.maxKills) { stats.maxKills = killer.kills; stats.maxKillsId = killer.id; }
+    }
+  } else if (cause === 'starve') stats.starve++;
+  else stats.erased++;
+  if (c.age > stats.maxAge) { stats.maxAge = c.age; stats.maxAgeId = c.id; }
+  const rec = lineage.get(c.id);
+  if (rec) rec.cell = null;
+  spawnParticles(c.x, c.y, 20, c.color, 1.6, 95, 2.4);
+  spawnParticles(c.x, c.y, 8, '#fff', 0.45, 55);
+  if (cause !== 'erase') spawnMeatDrops(c);
+  emit('death', c, cause, killer);
+}
+
+// ---------- бой ----------
+function combat(c, dt) {
+  c.attackTimer -= dt;
+  c.combatTimer += dt;
+  if (c.task !== 'hunt') return;
+  const t = c.taskTarget;
+  if (!t || !t.alive) return;
+  const dx = t.x - c.x, dy = t.y - c.y, d = Math.hypot(dx, dy);
+  // Удар возможен только при касании и когда готов; кулдаун, а не зарядка — первый удар мгновенный
+  if (d < c.radius + t.radius + 6 && c.attackTimer <= 0 && !losBlocked(c.x, c.y, t.x, t.y)) attack(c, t, dx, dy, d);
+}
+
+function attack(c, t, dx, dy, d) {
+  c.attackTimer = c.attackCooldown;
+  c.combatTimer = 0; t.combatTimer = 0;
+  c.lastHitAt = simTime;
+
+  const pen = c.strength / 255, def = t.armor / 255;
+  let dmg = c.attackDamage * S.dmgMult * (1 - def * 0.55);
+  let crit = Math.random() < S.critChance * (1 + pen * 0.6) * (1 - def * 0.7);
+  if (def > 0.9 && pen < 0.3) { crit = false; dmg *= 0.3; }   // FULL BLOCK
+
+  let knock = 1;
+  if (crit) {
+    dmg *= 2.2; knock = 2;
+    if (S.hardDmg) t.hardHp = Math.min(t.maxHp * S.hardMax, t.hardHp + dmg * 0.28);
+    spawnParticles(t.x, t.y, 14, '#ff2222', 0.7, 75, 2.6);
+  } else {
+    // добивание уже изувеченного усугубляет хард-зону
+    if (S.hardDmg && t.hp < t.maxHp * 0.3 && pen > 0.3) t.hardHp = Math.min(t.maxHp * S.hardMax, t.hardHp + dmg * 0.08);
+    spawnParticles(t.x, t.y, 5, '#ffaa44', 0.3, 34);
+  }
+  t.hp -= dmg;
+  const cap = t.maxHp - t.hardHp;
+  if (t.hp > cap) t.hp = cap;
+
+  const kb = (c.knockback * knock * S.knockMult) / t.mass / (d || 1);
+  t.vx += dx * kb; t.vy += dy * kb;
+
+  t.lastAttacker = c; t.lastAttackedAt = simTime;
+  if (t.teammate === c) t.teammate = null;
+  if (c.teammate === t) c.teammate = null;
+  emit('hit', c, t, dmg, crit);
+  if (t.hp <= 0) killCell(t, 'kill', c);
+}
+
+// ---------- энергия и здоровье ----------
+function economy(c, dt) {
+  // пассивный расход, чуть больше при движении и в бою
+  const sp = Math.hypot(c.vx, c.vy);
+  let upkeep = (c.baseUpkeep + 0.5 * sp / (c.speed * S.speedMult + 1)) * S.hungerMult;
+  if (c.combatTimer < 2) upkeep *= 1.3;
+  c.energy -= upkeep * dt;
+
+  // Реген: в бою сильно подавлен, но не выключен; после боя разгоняется тем быстрее, чем зеленее клетка
+  const delay = 0.5 + 4.5 * (1 - c.regen / 255);
+  const inFight = 0.15 + 0.25 * c.regen / 255;   // зелёные и в бою хоть как-то затягивают раны
+  const rf = c.combatTimer < 2 ? inFight : Math.min(1, inFight + (1 - inFight) * (c.combatTimer - 2) / delay);
+  let plantMult = 1;
+  if (S.plantNerf && c.regen > 100) {
+    const pr = c.plantEaten / (c.meatEaten + c.plantEaten + 0.01);
+    if (pr > 0.5) plantMult = Math.max(0.3, 1 - (pr - 0.5) * 2 * (c.regen / 255));
+  }
+  const cap = c.maxHp - c.hardHp;
+  if (c.hp > cap) c.hp = cap;
+  if (c.hp < cap && c.regenRate > 0) {
+    const rate = c.regenRate * rf * plantMult, cost = rate * 0.55 * dt;
+    if (c.energy > cost) { c.hp = Math.min(cap, c.hp + rate * dt); c.energy -= cost; }
+  }
+  // Хард-урон лечится очень медленно, в разы дороже и только в покое
+  if (c.hardHp > 0 && c.combatTimer > delay + 2) {
+    const rate = c.regenRate * 0.08, cost = rate * dt * 0.55 * S.hardHealCost;
+    if (rate > 0 && c.energy > cost * 3) {
+      c.hardHp -= Math.min(rate * dt, c.hardHp);
+      c.energy -= cost;
+    }
+  }
+
+  // Подбор еды: любая клетка ест то, чего касается
+  if (c.energy < c.maxEnergy * 0.97) {
+    const m = meatGrid.nearest(c.x, c.y, c.radius + 8);
+    if (m && Math.hypot(m.x - c.x, m.y - c.y) < c.radius + m.radius + 2) {
+      // регенераторам нужна кровь: мясо им даёт больше энергии
+      const gain = m.energy * (1 + 0.6 * c.regen / 255);
+      c.energy = Math.min(c.maxEnergy, c.energy + gain);
+      c.meatEaten += m.energy; m.alive = false; c.memX = m.x; c.memY = m.y; c.memAt = simTime;
+      spawnParticles(m.x, m.y, 4, '#ff6644', 0.4, 20);
+    }
+    const p = plantGrid.nearest(c.x, c.y, c.radius + 8);
+    if (p && Math.hypot(p.x - c.x, p.y - c.y) < c.radius + p.radius + 2) {
+      c.energy = Math.min(c.maxEnergy, c.energy + p.energy);
+      c.plantEaten += p.energy; p.alive = false; c.memX = p.x; c.memY = p.y; c.memAt = simTime;
+      spawnParticles(p.x, p.y, 3, '#44ff44', 0.3, 15);
+    }
+  }
+
+  // Энергия кончилась — начинает съедаться HP
+  if (c.energy <= 0) {
+    c.energy = 0;
+    c.hp -= S.starveDmg * dt;
+    if (c.hp <= 0) killCell(c, 'starve');
+  }
+  c.age += dt;
+}
+
+// ---------- размножение ----------
+function maybeReproduce(c, dt) {
+  if (cells.length >= S.maxCells) return;
+  const ef = c.energy / c.maxEnergy, hf = c.hp / c.maxHp;
+  // прожорливые хотят больше энергии про запас, прежде чем размножаться
+  if (ef < 0.62 + c.greed / 255 * 0.3 || hf < 0.5 || c.hardHp > c.maxHp * 0.3) return;
+  // в толчее размножаются неохотно (естественный регулятор плотности)
+  const crowd = 1 / (1 + Math.max(0, c.near.length - 10) / 10);
+  if (Math.random() < (0.12 + (1 - c.greed / 255) * 0.18) * S.reproChance * crowd * dt) reproduce(c);
+}
+
+function reproduce(c) {
+  const condition = (c.hp / c.maxHp + c.energy / c.maxEnergy) / 2;
+  c.energy -= c.maxEnergy * 0.6;
+  // Чувствует себя хорошо — мутация слабая; плохо — сильнее: время рискнуть
+  const mut = Math.max(0, Math.floor(((1 - condition) * 35 + 3) * S.mutationMult));
+  const genome = c.genome.map(b => clamp(b + Math.floor((Math.random() - 0.5) * 2 * mut), 0, 255));
+  const a = Math.random() * Math.PI * 2;
+  const pos = findFreePos(c.x + Math.cos(a) * c.radius * 3, c.y + Math.sin(a) * c.radius * 3, c.radius + 2);
+  const kid = createCell(pos.x, pos.y, genome, c);
+  kid.energy = kid.maxEnergy * 0.3;
+  cells.push(kid);
+  stats.births++;
+  if (c.children.length > stats.maxKids) { stats.maxKids = c.children.length; stats.maxKidsId = c.id; }
+  spawnParticles(kid.x, kid.y, 10, '#fff', 0.9, 38);
+  emit('birth', kid, c);
+}
+
+// ---------- спавн ----------
+function genomeForSpawn() {
+  const base = S.spawnGenome;
+  if (S.spawnMode === 'exact') return base.slice();
+  if (S.spawnSpread >= 255) return randomGenome();
+  return base.map(b => clamp(Math.round(b + (Math.random() * 2 - 1) * S.spawnSpread), 0, 255));
+}
+
+function spawnCell(x, y, genome) {
+  const pos = findFreePos(x, y, S.cellSize + 2);
+  const c = createCell(pos.x, pos.y, genome || genomeForSpawn());
+  cells.push(c);
+  stats.spawned++;
+  spawnParticles(c.x, c.y, 6, '#fff', 0.6, 30);
+  emit('spawn', c);
+  return c;
+}
+
+function spawnCellsAt(x, y) {
+  const n = S.spawnCount;
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, r = n === 1 ? 0 : Math.sqrt(Math.random()) * S.spawnRadius;
+    spawnCell(x + Math.cos(a) * r, y + Math.sin(a) * r);
+  }
+}
+
+let plantAcc = 0;
+function spawnPlants(dt) {
+  if (plants.length >= S.plantMax) return;
+  plantAcc += S.plantRate * dt;
+  while (plantAcc >= 1) {
+    plantAcc -= 1;
+    const pos = findFreePos(20 + Math.random() * (world.w - 40), 20 + Math.random() * (world.h - 40), 5);
+    if (pos.ok) plants.push(createPlant(pos.x, pos.y));
+  }
+}
+
+function spawnFromSources(dt) {
+  if (plants.length >= S.plantMax * 1.3) return;
+  for (const s of sources) {
+    if (!s.alive) continue;
+    s.spawnTimer += dt * S.sourceRate;
+    while (s.spawnTimer >= 1) {
+      s.spawnTimer -= 1;
+      const a = Math.random() * Math.PI * 2, r = s.r + 4 + Math.sqrt(Math.random()) * S.sourceRadius;
+      const pos = findFreePos(s.x + Math.cos(a) * r, s.y + Math.sin(a) * r, 4);
+      if (pos.ok) { plants.push(createPlant(pos.x, pos.y, S.sourceFat)); s.spawned++; }
+    }
+  }
+}
+
+// Перезапуск мира = старт текущей карты (см. scenarios.js)
+function spawnInitial() { startScenario(currentScenario); }
+
+// ---------- стаи и вожаки ----------
+// Нет кода, управляющего стаями: вожак — просто клетка, за которой (прямо или через цепочку) едут другие.
+let packLeaders = 0;
+function computePacks() {
+  for (const c of cells) { c.pack = 0; c.leader = false; }
+  for (const c of cells) {
+    let r = c, n = 0;
+    while (r.teammate && r.teammate.alive && n < 12) { r = r.teammate; n++; if (r === c) break; }
+    if (r === c && c.teammate) {            // замкнутая пара/кольцо: вожак — клетка с минимальным id
+      let m = c, x = c.teammate;
+      for (let i = 0; i < 12 && x && x.alive && x !== c; i++) { if (x.id < m.id) m = x; x = x.teammate; }
+      r = m;
+    }
+    c.packRoot = r.id;
+    if (r !== c) r.pack++;
+  }
+  packLeaders = 0;
+  for (const c of cells) if (c.pack >= 2) { c.leader = true; packLeaders++; }
+}
+let _packTick = 0;
+
+// ==================== STEP ====================
+function step(dt) {
+  simTime += dt;
+  if (obstDirty) rebuildObstacles();
+  rebuildGrids();
+  spawnPlants(dt);
+  spawnFromSources(dt);
+
+  const n = cells.length;
+  for (let i = 0; i < n; i++) {
+    const c = cells[i];
+    if (!c.alive) continue;
+    c.thinkTimer -= dt;
+    if (c.thinkTimer <= 0) {
+      c.thinkTimer = thinkInterval();
+      think(c);
+      maybeReproduce(c, 0.16);
+      if (!c.alive) continue;
+    }
+    move(c, dt);
+    combat(c, dt);
+    if (!c.alive) continue;
+    economy(c, dt);
+    if (c.pulse > 0) c.pulse = Math.max(0, c.pulse - dt * 3);
+    if (S.heartbeat && c.alive) {
+      c.heartTimer -= dt;
+      if (c.heartTimer <= 0) {
+        c.heartTimer = 1.5 + Math.random() * 2.5; c.pulse = 1;
+        if (Math.random() < 0.3) spawnParticles(c.x, c.y, 1, 'rgba(255,255,255,0.3)', 0.6, 14, 1.5);
+      }
+    }
+  }
+
+  // частицы
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    const f = Math.pow(0.96, dt * 60); p.vx *= f; p.vy *= f;
+    p.life -= dt;
+    if (p.life <= 0) { particles[i] = particles[particles.length - 1]; particles.pop(); }
+  }
+  // ошмётки: разлетаются, тормозят и лежат минутами
+  for (const m of meats) {
+    if (!m.alive) continue;
+    m.x += m.vx * dt; m.y += m.vy * dt;
+    const f = Math.pow(0.94, dt * 60); m.vx *= f; m.vy *= f;
+    m.x = clamp(m.x, m.radius, world.w - m.radius); m.y = clamp(m.y, m.radius, world.h - m.radius);
+    m.life -= dt;
+    if (m.life <= 0) m.alive = false;
+  }
+
+  compact();
+  if (++_packTick % 15 === 0) computePacks();
+  if (S.autoRespawn && cells.length === 0) for (let i = 0; i < 20; i++) spawnCell(world.w / 2 + rand(-150, 150), world.h / 2 + rand(-150, 150), randomGenome());
+  sampleStats(false);
+  emit('tick', dt);
+}
+
+function compactList(list) {
+  let j = 0;
+  for (let i = 0; i < list.length; i++) if (list[i].alive) list[j++] = list[i];
+  list.length = j;
+}
+function compact() {
+  compactList(cells); compactList(plants); compactList(meats); compactList(sources);
+  if (obstDirty === false && sources.length !== _lastSrc) obstDirty = true;
+  _lastSrc = sources.length;
+  pruneLineage();
+}
+let _lastSrc = 0;
+
+// Накопитель времени: ускорение/замедление/пауза не влияют на сами механики
+let acc = 0;
+function advance(frameDt) {
+  if (paused) { acc = 0; return; }
+  acc += Math.min(frameDt, 0.25) * timeScale;
+  const maxSteps = 24;
+  let n = 0;
+  while (acc >= FIXED_DT && n < maxSteps) { step(FIXED_DT); acc -= FIXED_DT; n++; }
+  if (acc >= FIXED_DT) acc = 0;
+}
+function stepOnce() { step(FIXED_DT); }
+
+// ───────── scenarios.js ─────────
+// ==================== SCENARIOS (стартовые карты) ====================
+// Каждая карта задаёт размер мира и экологию (поверх настроек игрока), стены, источники
+// и стартовые группы клеток определённых архетипов. Новая карта = новый объект в SCENARIOS.
+
+let currentScenario = 'random';
+
+// Ключи, которые карта может переопределить; перед стартом карты они сбрасываются к умолчаниям,
+// чтобы карта не наследовала условия предыдущей. «Случайный мир» их не трогает.
+const SCENARIO_KEYS = ['worldW', 'worldH', 'plantRate', 'plantEnergy', 'plantMax', 'sourceRate', 'sourceRadius', 'sourceFat'];
+
+// Геном архетипа из атласа: тело по уровням ±15, ядро — заданное или «родное» для архетипа (±20)
+function archGenome(name, nuc) {
+  const i = ARCH_NAMES.indexOf(name);
+  if (i < 0) throw new Error('Нет архетипа ' + name);
+  const jit = (v, a) => clamp(Math.round(v + (Math.random() - 0.5) * 2 * a), 0, 255);
+  const n = nuc || archNucleus(i);
+  const pick = v => (v == null ? Math.floor(Math.random() * 256) : jit(v, 20));
+  return [jit(LV[Math.floor(i / 9)], 15), jit(LV[Math.floor(i / 3) % 3], 15), jit(LV[i % 3], 15), pick(n.c), pick(n.s), pick(n.g)];
+}
+
+function scGroup(name, n, x, y, spread, nuc) {
+  for (let k = 0; k < n; k++) {
+    const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * spread;
+    spawnCell(x + Math.cos(a) * r, y + Math.sin(a) * r, archGenome(name, nuc));
+  }
+}
+function scWall(x1, y1, x2, y2) { walls.push({ x1, y1, x2, y2, r: 6 }); obstDirty = true; }
+function scSource(x, y) {
+  rebuildObstacles();
+  const p = findFreePos(x, y, 30);
+  if (p.ok) sources.push(createSource(p.x, p.y));
+}
+function scPlants(n) {
+  rebuildObstacles();
+  for (let i = 0; i < n; i++) {
+    const pos = findFreePos(20 + Math.random() * (world.w - 40), 20 + Math.random() * (world.h - 40), 5);
+    if (pos.ok) plants.push(createPlant(pos.x, pos.y));
+  }
+}
+function scRandomCells(n, x, y, r) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * r;
+    spawnCell(x + Math.cos(a) * d, y + Math.sin(a) * d, genomeForSpawn());
+  }
+}
+// Кольцо стен с проходами (оазис)
+function scRing(cx, cy, R, gaps) {
+  const seg = 12;
+  for (let i = 0; i < seg; i++) {
+    if (gaps.includes(i)) continue;
+    const a1 = i / seg * Math.PI * 2, a2 = (i + 1) / seg * Math.PI * 2;
+    scWall(cx + Math.cos(a1) * R, cy + Math.sin(a1) * R, cx + Math.cos(a2) * R, cy + Math.sin(a2) * R);
+  }
+}
+
+const HERBIVORE = { c: 40, s: 220, g: 80 };    // трусливые, стайные, плодовитые
+const PREDATOR = { c: 230, s: 40, g: 100 };    // смелые одиночки
+const CLAN = { c: 150, s: 230, g: 120 };       // боевые стайные
+
+const SCENARIOS = [
+  {
+    id: 'random', name: 'Случайный мир',
+    desc: 'Классика: случайные клетки в центре, растения по всей карте и источники. Использует твои настройки спавна.',
+    build() {
+      scRandomCells(S.initCells, world.w / 2, world.h / 2, S.initRadius);
+      scPlants(S.initPlants);
+      for (let i = 0; i < S.initSources; i++) scSource(40 + Math.random() * (world.w - 80), 40 + Math.random() * (world.h - 80));
+    },
+  },
+  {
+    id: 'arena', name: 'Арена 27 архетипов', set: { worldW: 2700, worldH: 1800 },
+    desc: 'Все 27 архетипов атласа по 6 клеток, каждый в своём углу сетки 9×3. Кто переживёт остальных?',
+    build() {
+      for (let i = 0; i < 27; i++) {
+        const gx = i % 9, gy = Math.floor(i / 9);
+        scGroup(ARCH_NAMES[i], 6, 150 + gx * 300, 300 + gy * 600, 50);
+      }
+      for (let i = 0; i < 8; i++) scSource(200 + (i % 4) * 760, 600 + Math.floor(i / 4) * 600);
+      scPlants(350);
+    },
+  },
+  {
+    id: 'kingdoms', name: 'Три царства', set: { worldW: 2400, worldH: 1800 },
+    desc: 'Красное, зелёное и синее царства в своих углах со своими источниками. Между ними — стены с проходами.',
+    build() {
+      const W = world.w, H = world.h, cx = W / 2, cy = H * 0.52;
+      // три перегородки от центра с проходом посередине
+      for (const a of [-Math.PI / 2, Math.PI / 6, Math.PI * 5 / 6]) {
+        const ex = cx + Math.cos(a) * 1100, ey = cy + Math.sin(a) * 1100;
+        scWall(cx + Math.cos(a) * 120, cy + Math.sin(a) * 120, cx + Math.cos(a) * 420, cy + Math.sin(a) * 420);
+        scWall(cx + Math.cos(a) * 560, cy + Math.sin(a) * 560, clamp(ex, 0, W), clamp(ey, 0, H));
+      }
+      scGroup('Шершень', 8, W * 0.2, H * 0.3, 90); scGroup('Хищник', 8, W * 0.2, H * 0.3, 90); scGroup('Кусака', 6, W * 0.2, H * 0.3, 90);
+      scGroup('Пожиратель', 8, W * 0.8, H * 0.3, 90); scGroup('Вампир', 6, W * 0.8, H * 0.3, 90);
+      scGroup('Мицелий', 6, W * 0.8, H * 0.3, 90); scGroup('Слизень', 4, W * 0.8, H * 0.3, 90);
+      scGroup('Танк', 6, W * 0.5, H * 0.85, 90); scGroup('Страж', 8, W * 0.5, H * 0.85, 90);
+      scGroup('Бастион', 6, W * 0.5, H * 0.85, 90); scGroup('Чешуйка', 4, W * 0.5, H * 0.85, 90);
+      scSource(W * 0.1, H * 0.15); scSource(W * 0.3, H * 0.45);
+      scSource(W * 0.9, H * 0.15); scSource(W * 0.7, H * 0.45);
+      scSource(W * 0.35, H * 0.9); scSource(W * 0.65, H * 0.9);
+      scPlants(300);
+    },
+  },
+  {
+    id: 'herd', name: 'Стадо и хищники', set: { worldW: 2200, worldH: 1600, plantRate: 6 },
+    desc: 'Большое трусливое стадо травоядных (стайные, слабые) и горстка смелых хищников-одиночек. Много травы.',
+    build() {
+      const W = world.w, H = world.h;
+      scGroup('Слизень', 20, W * 0.5, H * 0.5, 260, HERBIVORE);
+      scGroup('Стойкий', 15, W * 0.5, H * 0.5, 260, HERBIVORE);
+      scGroup('Чешуйка', 15, W * 0.5, H * 0.5, 260, HERBIVORE);
+      scGroup('Хищник', 4, W * 0.12, H * 0.15, 60, PREDATOR);
+      scGroup('Шершень', 3, W * 0.88, H * 0.85, 60, PREDATOR);
+      for (let i = 0; i < 4; i++) scSource(W * (0.25 + 0.5 * (i % 2)), H * (0.25 + 0.5 * Math.floor(i / 2)));
+      scPlants(500);
+    },
+  },
+  {
+    id: 'oases', name: 'Оазисы', set: { worldW: 2400, worldH: 1800, plantRate: 0.4, sourceRate: 2, sourceRadius: 90 },
+    desc: 'Пустыня: трава почти не растёт. Еда — только в пяти оазисах за кольцевыми стенами с узкими проходами.',
+    build() {
+      const W = world.w, H = world.h;
+      const pts = [[0.2, 0.25], [0.8, 0.25], [0.5, 0.5], [0.2, 0.78], [0.8, 0.78]];
+      for (const [px, py] of pts) {
+        const gap = Math.floor(Math.random() * 12);
+        scRing(W * px, H * py, 190, [gap, (gap + 6) % 12]);
+        scSource(W * px, H * py);
+      }
+      scRandomCells(60, W / 2, H / 2, 700);
+      scPlants(120);
+    },
+  },
+  {
+    id: 'maze', name: 'Лабиринт', set: { worldW: 2000, worldH: 1500 },
+    desc: 'Сетка комнат 250×250 со случайными проходами. Проверка навигации: еда за стенами, путь не прямой.',
+    build() {
+      const W = world.w, H = world.h, C = 250;
+      for (let x = C; x < W; x += C) for (let y = 0; y < H; y += C) {
+        if (Math.random() < 0.35) continue;
+        const gap = 60 + Math.random() * 60;
+        scWall(x, y, x, y + (C - gap) / 2); scWall(x, y + (C + gap) / 2, x, Math.min(H, y + C));
+      }
+      for (let y = C; y < H; y += C) for (let x = 0; x < W; x += C) {
+        if (Math.random() < 0.35) continue;
+        const gap = 60 + Math.random() * 60;
+        scWall(x, y, x + (C - gap) / 2, y); scWall(x + (C + gap) / 2, y, Math.min(W, x + C), y);
+      }
+      for (let i = 0; i < 6; i++) scSource(C / 2 + Math.floor(Math.random() * (W / C)) * C, C / 2 + Math.floor(Math.random() * (H / C)) * C);
+      scRandomCells(50, W / 2, H / 2, 600);
+      scPlants(250);
+    },
+  },
+  {
+    id: 'famine', name: 'Голодные времена', set: { plantRate: 3.5, plantEnergy: 24 },
+    desc: 'Мало травы, она тощая, источников нет. Много клеток — выживут те, кто умеет экономить или охотиться.',
+    build() {
+      scRandomCells(80, world.w / 2, world.h / 2, 600);
+      scPlants(150);
+    },
+  },
+  {
+    id: 'redgreen', name: 'Красные против зелёных', set: { worldW: 2400, worldH: 1300 },
+    desc: 'Две половины мира, стена с двумя проходами. Слева сила (Шершень, Хищник, Кусака), справа реген (Пожиратель, Вампир, Мицелий).',
+    build() {
+      const W = world.w, H = world.h;
+      scWall(W / 2, 0, W / 2, H * 0.25); scWall(W / 2, H * 0.38, W / 2, H * 0.62); scWall(W / 2, H * 0.75, W / 2, H);
+      scGroup('Шершень', 9, W * 0.22, H * 0.5, 160); scGroup('Хищник', 9, W * 0.22, H * 0.5, 160); scGroup('Кусака', 7, W * 0.22, H * 0.5, 160);
+      scGroup('Пожиратель', 9, W * 0.78, H * 0.5, 160); scGroup('Вампир', 9, W * 0.78, H * 0.5, 160); scGroup('Мицелий', 7, W * 0.78, H * 0.5, 160);
+      for (const px of [0.15, 0.85]) { scSource(W * px, H * 0.25); scSource(W * px, H * 0.75); scSource(W * (px < 0.5 ? 0.35 : 0.65), H * 0.5); }
+      scPlants(250);
+    },
+  },
+  {
+    id: 'packs', name: 'Войны стай', set: { worldW: 2400, worldH: 1800 },
+    desc: 'Пять кланов-клонов со стайным ядром (Охотник, Солдат, Страж, Вампир, Хранитель) вокруг богатого центра.',
+    build() {
+      const W = world.w, H = world.h, names = ['Охотник', 'Солдат', 'Страж', 'Вампир', 'Хранитель'];
+      names.forEach((n, i) => {
+        const a = i / names.length * Math.PI * 2 - Math.PI / 2;
+        scGroup(n, 10, W / 2 + Math.cos(a) * 650, H / 2 + Math.sin(a) * 650, 70, CLAN);
+        scSource(W / 2 + Math.cos(a) * 820, H / 2 + Math.sin(a) * 820);
+      });
+      scSource(W / 2 - 80, H / 2); scSource(W / 2 + 80, H / 2);
+      scPlants(300);
+    },
+  },
+];
+
+function getScenario(id) { return SCENARIOS.find(s => s.id === id) || SCENARIOS[0]; }
+
+function startScenario(id) {
+  const sc = getScenario(id);
+  currentScenario = sc.id;
+  if (sc.set) {
+    for (const k of SCENARIO_KEYS) { const d = SETTING_DEFS.find(x => x.key === k); if (d) S[k] = d.def; }
+    Object.assign(S, sc.set);
+  }
+  resetWorldState();
+  sc.build();
+  stats.spawned = 0;
+  obstDirty = true;
+  particles.length = 0;
+  computePacks();
+  sampleStats(true);
+}
+
+// ───────── stats.js ─────────
+// ==================== STATISTICS ====================
+// История популяции и средних генов, поколения, архетипы и универсальная отрисовка графиков.
+
+const hist = {
+  t: [], pop: [], plants: [], meat: [],
+  str: [], arm: [], reg: [], cou: [], soc: [], gre: [],
+  gen: [], births: [], kills: [], starve: [],
+};
+let histInterval = 1, lastSample = 0;
+const HIST_MAX = 600;
+
+function sampleStats(force) {
+  if (force) {
+    for (const k in hist) hist[k].length = 0;
+    histInterval = 1; lastSample = 0;
+  } else if (simTime - lastSample < histInterval) return;
+  lastSample = simTime;
+
+  const n = cells.length;
+  let s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0, g = 0;
+  for (const c of cells) {
+    s0 += c.strength; s1 += c.armor; s2 += c.regen; s3 += c.courage; s4 += c.sociability; s5 += c.greed; g += c.gen;
+  }
+  const d = n || 1;
+  hist.t.push(simTime); hist.pop.push(n); hist.plants.push(plants.length); hist.meat.push(meats.length);
+  hist.str.push(s0 / d); hist.arm.push(s1 / d); hist.reg.push(s2 / d);
+  hist.cou.push(s3 / d); hist.soc.push(s4 / d); hist.gre.push(s5 / d);
+  hist.gen.push(g / d);
+  hist.births.push(stats.births); hist.kills.push(stats.kills); hist.starve.push(stats.starve);
+
+  if (hist.t.length > HIST_MAX) {      // прореживаем: вся история остаётся в окне, но реже
+    for (const k in hist) hist[k] = hist[k].filter((_, i) => i % 2 === 0);
+    histInterval *= 2;
+  }
+}
+
+// Архетип клетки из cells.jsx: уровень каждой статы 0/1/2
+function archetypeIndex(c) {
+  const lv = v => (v < 85 ? 0 : v < 170 ? 1 : 2);
+  return lv(c.strength) * 9 + lv(c.armor) * 3 + lv(c.regen);
+}
+
+function archetypeCounts() {
+  const cnt = new Array(27).fill(0);
+  for (const c of cells) cnt[archetypeIndex(c)]++;
+  return cnt.map((n, i) => ({ name: ARCH_NAMES[i], n })).filter(a => a.n > 0).sort((a, b) => b.n - a.n);
+}
+
+function generationSeries() {
+  const out = { gens: [], n: [], str: [], arm: [], reg: [], cou: [], soc: [], gre: [] };
+  for (let g = 0; g < genAcc.length; g++) {
+    const a = genAcc[g];
+    out.gens.push(g);
+    if (!a || !a.n) { for (const k of ['n', 'str', 'arm', 'reg', 'cou', 'soc', 'gre']) out[k].push(NaN); continue; }
+    out.n.push(a.n);
+    ['str', 'arm', 'reg', 'cou', 'soc', 'gre'].forEach((k, i) => out[k].push(a.sum[i] / a.n));
+  }
+  return out;
+}
+
+function fmtTime(t) {
+  t = Math.floor(t);
+  const m = Math.floor(t / 60), s = t % 60;
+  return m ? `${m}м ${s}с` : `${s}с`;
+}
+
+// ==================== CHARTS ====================
+function prepCanvas(cv) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth || 300, h = cv.clientHeight || 120;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#0a0a0e'; g.fillRect(0, 0, w, h);
+  return { g, w, h };
+}
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  const f = v / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+}
+
+// o: { series:[{label,color,data}], x0, x1, xFmt, yMin, yMax }
+function drawChart(cv, o) {
+  const { g, w, h } = prepCanvas(cv);
+  const L = 34, R = 6, T = 16, B = 15;
+  let mn = o.yMin, mx = o.yMax;
+  if (mx == null) {
+    mx = 0;
+    for (const s of o.series) for (const v of s.data) if (v > mx) mx = v;
+    mx = niceMax(mx);
+  }
+  if (mn == null) mn = 0;
+  if (mx <= mn) mx = mn + 1;
+  g.font = '10px sans-serif'; g.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = T + (h - T - B) * (1 - i / 4);
+    g.strokeStyle = '#1a1a22'; g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+    g.fillStyle = '#667'; g.textAlign = 'right';
+    const val = mn + (mx - mn) * i / 4;
+    g.fillText(val >= 100 ? Math.round(val) : val.toFixed(val < 10 ? 1 : 0), L - 4, y + 3);
+  }
+  const xf = o.xFmt || (v => String(Math.round(v)));
+  g.fillStyle = '#667'; g.textAlign = 'left'; g.fillText(xf(o.x0), L, h - 3);
+  g.textAlign = 'right'; g.fillText(xf(o.x1), w - R, h - 3);
+
+  let lx = L + 2;
+  g.textAlign = 'left';
+  for (const s of o.series) {
+    const n = s.data.length;
+    g.strokeStyle = s.color; g.lineWidth = 1.5; g.beginPath();
+    let pen = false;
+    for (let i = 0; i < n; i++) {
+      const v = s.data[i];
+      if (!isFinite(v)) { pen = false; continue; }
+      const x = L + (n === 1 ? 0.5 : i / (n - 1)) * (w - L - R);
+      const y = T + (h - T - B) * (1 - (v - mn) / (mx - mn));
+      if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+    }
+    g.stroke();
+    g.fillStyle = s.color; g.fillRect(lx, 4, 8, 3);
+    g.fillStyle = '#aab'; g.fillText(s.label, lx + 11, 9);
+    lx += 16 + g.measureText(s.label).width;
+  }
+}
+
+// Столбчатая диаграмма для распределений
+function drawBars(cv, o) {
+  const { g, w, h } = prepCanvas(cv);
+  const L = 30, R = 6, T = 16, B = 15;
+  let mx = 0;
+  for (const s of o.series) for (const v of s.data) if (v > mx) mx = v;
+  mx = niceMax(mx);
+  g.font = '10px sans-serif';
+  const bins = o.labels.length, bw = (w - L - R) / bins, sn = o.series.length;
+  for (let i = 0; i <= 2; i++) {
+    const y = T + (h - T - B) * (1 - i / 2);
+    g.strokeStyle = '#1a1a22'; g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+    g.fillStyle = '#667'; g.textAlign = 'right'; g.fillText(Math.round(mx * i / 2), L - 4, y + 3);
+  }
+  for (let b = 0; b < bins; b++) {
+    o.series.forEach((s, k) => {
+      const v = s.data[b] || 0, bh = (h - T - B) * v / mx;
+      g.fillStyle = s.color;
+      g.fillRect(L + b * bw + 2 + k * (bw - 4) / sn, h - B - bh, (bw - 4) / sn - 1, bh);
+    });
+    g.fillStyle = '#667'; g.textAlign = 'center'; g.fillText(o.labels[b], L + b * bw + bw / 2, h - 3);
+  }
+  let lx = L + 2; g.textAlign = 'left';
+  for (const s of o.series) {
+    g.fillStyle = s.color; g.fillRect(lx, 4, 8, 3);
+    g.fillStyle = '#aab'; g.fillText(s.label, lx + 11, 9);
+    lx += 16 + g.measureText(s.label).width;
+  }
+}
+
+function histogram(cells_, key, bins) {
+  const out = new Array(bins).fill(0);
+  for (const c of cells_) out[Math.min(bins - 1, Math.floor(c[key] / 256 * bins))]++;
+  return out;
+}
+
+// Данные графиков, общие для живой панели и итогового экрана
+const SERIES = {
+  body: () => [
+    { label: 'Сила', color: '#f55', data: hist.str },
+    { label: 'Броня', color: '#58f', data: hist.arm },
+    { label: 'Реген', color: '#5d5', data: hist.reg }],
+  nucleus: () => [
+    { label: 'Смелость', color: '#f77', data: hist.cou },
+    { label: 'Стайность', color: '#79f', data: hist.soc },
+    { label: 'Прожорл.', color: '#7e7', data: hist.gre }],
+};
+
+function drawLiveCharts(popCv, bodyCv) {
+  const x1 = hist.t.length ? hist.t[hist.t.length - 1] : 0;
+  drawChart(popCv, {
+    series: [{ label: 'Клетки', color: '#4d9', data: hist.pop }],
+    x0: 0, x1, xFmt: fmtTime,
+  });
+  drawChart(bodyCv, { series: SERIES.body(), yMin: 0, yMax: 255, x0: 0, x1, xFmt: fmtTime });
+}
+
+// ───────── saves.js ─────────
+// ==================== SAVE / LOAD ====================
+// Полный снимок мира: настройки, клетки (с геномом, HP, энергией, родословной), растения, мясо,
+// палки, источники, история статистики. Слоты — в localStorage, плюс экспорт/импорт файла.
+
+const SAVE_VERSION = 1;
+const SLOT_COUNT = 3;
+const r1 = v => Math.round(v * 10) / 10;
+
+function serializeWorld() {
+  return {
+    v: SAVE_VERSION, ver: VERSION, savedAt: Date.now(),
+    t: simTime, nextId, world: { w: world.w, h: world.h }, scenario: currentScenario,
+    S: JSON.parse(JSON.stringify(S)), stats: { ...stats },
+    cam: { x: cam.x, y: cam.y, zoom: cam.zoom },
+    cells: cells.map(c => [
+      c.id, r1(c.x), r1(c.y), r1(c.vx), r1(c.vy), c.genome, r1(c.hp), r1(c.hardHp), r1(c.energy), r1(c.age), c.gen,
+      c.parent, c.kills, r1(c.meatEaten), r1(c.plantEaten), c.teammate && c.teammate.alive ? c.teammate.id : 0,
+      c.children, r1(Math.min(c.combatTimer, 99)),
+    ]),
+    plants: plants.map(p => [r1(p.x), r1(p.y), r1(p.radius), r1(p.energy)]),
+    meats: meats.filter(m => m.alive).map(m => [r1(m.x), r1(m.y), r1(m.vx), r1(m.vy), r1(m.radius), r1(m.energy), r1(m.life), r1(m.maxLife), m.r, m.gb]),
+    walls: walls.map(w => [r1(w.x1), r1(w.y1), r1(w.x2), r1(w.y2), w.r]),
+    sources: sources.filter(s => s.alive).map(s => [s.id, r1(s.x), r1(s.y), s.r, s.spawned]),
+    lineage: [...lineage.values()].map(r => [r.id, r.parent, r.children, r.gen]),
+    genAcc: genAcc.map(a => (a ? [a.n, a.sum] : null)),
+    hist, histInterval, lastSample,
+  };
+}
+
+function loadWorld(d) {
+  if (!d || d.v !== SAVE_VERSION || !Array.isArray(d.cells)) throw new Error('Неизвестный формат сейва');
+  // настройки: только известные ключи нужного типа
+  for (const k in S) {
+    if (!(k in d.S)) continue;
+    if (Array.isArray(S[k])) { if (Array.isArray(d.S[k]) && d.S[k].length === S[k].length) S[k] = d.S[k].slice(); }
+    else if (typeof d.S[k] === typeof S[k]) S[k] = d.S[k];
+  }
+  resetWorldState();
+  world.w = d.world.w; world.h = d.world.h;
+  cellGrid.resize(world.w, world.h); plantGrid.resize(world.w, world.h); meatGrid.resize(world.w, world.h);
+  simTime = d.t; nextId = d.nextId;
+  if (d.scenario) currentScenario = getScenario(d.scenario).id;
+  Object.assign(stats, d.stats);
+
+  const byId = new Map();
+  for (const a of d.cells) {
+    const c = createCell(a[1], a[2], a[5], null, a[0]);
+    c.vx = a[3]; c.vy = a[4]; c.hp = a[6]; c.hardHp = a[7]; c.energy = a[8]; c.age = a[9]; c.gen = a[10];
+    c.parent = a[11]; c.kills = a[12]; c.meatEaten = a[13]; c.plantEaten = a[14];
+    c.children = Array.isArray(a[16]) ? a[16] : []; c.combatTimer = a[17];
+    c.px = c.x; c.py = c.y; c.pxAt = simTime;
+    cells.push(c); byId.set(c.id, c);
+  }
+  d.cells.forEach(a => { if (a[15]) byId.get(a[0]).teammate = byId.get(a[15]) || null; });
+  for (const a of d.plants) plants.push({ x: a[0], y: a[1], radius: a[2], energy: a[3], alive: true });
+  for (const a of d.meats) meats.push({ x: a[0], y: a[1], vx: a[2], vy: a[3], radius: a[4], energy: a[5], life: a[6], maxLife: a[7], r: a[8], gb: a[9], alive: true });
+  for (const a of d.walls) walls.push({ x1: a[0], y1: a[1], x2: a[2], y2: a[3], r: a[4] });
+  for (const a of d.sources) sources.push({ id: a[0], x: a[1], y: a[2], r: a[3], spawned: a[4], spawnTimer: Math.random(), alive: true });
+  for (const r of d.lineage) lineage.set(r[0], { id: r[0], parent: r[1], children: r[2], cell: byId.get(r[0]) || null, gen: r[3] });
+  genAcc.length = 0;
+  for (const a of d.genAcc) genAcc.push(a ? { n: a[0], sum: a[1] } : undefined);
+  for (const k in hist) hist[k] = Array.isArray(d.hist[k]) ? d.hist[k] : [];
+  histInterval = d.histInterval || 1; lastSample = d.lastSample || 0;
+  if (d.cam) { cam.x = d.cam.x; cam.y = d.cam.y; cam.zoom = d.cam.zoom; }
+  particles.length = 0;
+  obstDirty = true; rebuildObstacles();
+  computePacks();
+  saveSettings();
+}
+
+// ---------- слоты в localStorage ----------
+const slotKey = i => 'cells4.claude.slot.' + i;
+const slotMetaKey = i => 'cells4.claude.slotmeta.' + i;
+
+function slotMeta(i) {
+  try { return JSON.parse(localStorage.getItem(slotMetaKey(i))); } catch (e) { return null; }
+}
+
+function saveSlot(i) {
+  const d = serializeWorld();
+  const json = JSON.stringify(d);
+  try {
+    localStorage.setItem(slotKey(i), json);
+    localStorage.setItem(slotMetaKey(i), JSON.stringify({ at: d.savedAt, t: d.t, cells: d.cells.length, plants: d.plants.length, kb: Math.round(json.length / 1024) }));
+    return null;
+  } catch (e) { return 'Не влезло в хранилище браузера (' + Math.round(json.length / 1024) + ' КБ) — скачайте файл'; }
+}
+
+function loadSlot(i) {
+  let raw;
+  try { raw = localStorage.getItem(slotKey(i)); } catch (e) { return 'Хранилище браузера недоступно'; }
+  if (!raw) return 'Слот пуст';
+  try { loadWorld(JSON.parse(raw)); return null; } catch (e) { return 'Ошибка загрузки: ' + e.message; }
+}
+
+function deleteSlot(i) {
+  try { localStorage.removeItem(slotKey(i)); localStorage.removeItem(slotMetaKey(i)); } catch (e) { /* ignore */ }
+}
+
+// ---------- файлы ----------
+function downloadSave() {
+  const blob = new Blob([JSON.stringify(serializeWorld())], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'cells4-save-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+async function loadSaveFile(file) {
+  try { loadWorld(JSON.parse(await file.text())); return null; } catch (e) { return 'Ошибка загрузки: ' + e.message; }
+}
+
+// ───────── render.js ─────────
+// ==================== RENDER ====================
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+let vw = 800, vh = 600, dpr = 1;
+const cam = { x: 1000, y: 750, zoom: 1 };
+
+// Состояние ввода, которое нужно рендеру (подсказки инструментов, hover)
+const input = { tool: 'spawn', mx: 0, my: 0, over: false, wallDrag: null, hovered: null };
+
+function resizeCanvas() {
+  dpr = window.devicePixelRatio || 1;
+  vw = canvas.clientWidth; vh = canvas.clientHeight;
+  canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
+}
+window.addEventListener('resize', resizeCanvas);
+
+function screenToWorld(sx, sy) { return [(sx - vw / 2) / cam.zoom + cam.x, (sy - vh / 2) / cam.zoom + cam.y]; }
+
+function fitCamera() {
+  cam.zoom = Math.min(vw / world.w, vh / world.h) * 0.96;
+  cam.x = world.w / 2; cam.y = world.h / 2;
+}
+
+function zoomAt(sx, sy, factor) {
+  const [bx, by] = screenToWorld(sx, sy);
+  cam.zoom = clamp(cam.zoom * factor, 0.05, 8);
+  const [ax, ay] = screenToWorld(sx, sy);
+  cam.x += bx - ax; cam.y += by - ay;
+}
+
+// ---------- родственники ----------
+function getRelatives(c) {
+  const anc = [], desc = [];
+  let ancTotal = 0, descTotal = 0;
+  const rec = lineage.get(c.id);
+  if (!rec) return { anc, desc, ancTotal, descTotal };
+  let pid = rec.parent, guard = 0;
+  while (pid != null && guard++ < 500) {
+    const r = lineage.get(pid);
+    if (!r) break;
+    ancTotal++;
+    if (r.cell && r.cell.alive) anc.push(r.cell);
+    pid = r.parent;
+  }
+  const stack = rec.children.slice();
+  guard = 0;
+  while (stack.length && guard++ < 5000) {
+    const r = lineage.get(stack.pop());
+    if (!r) continue;
+    descTotal++;
+    if (r.cell && r.cell.alive) desc.push(r.cell);
+    for (const k of r.children) stack.push(k);
+  }
+  return { anc, desc, ancTotal, descTotal };
+}
+
+function pickCell(wx, wy) {
+  const reach = 6 / cam.zoom;
+  let best = null, bestD = Infinity;
+  for (const c of cellGrid.collect(wx, wy, S.cellSize + reach + 4, [])) {
+    if (!c.alive) continue;
+    const d = Math.hypot(c.x - wx, c.y - wy);
+    if (d < c.radius + reach && d < bestD) { bestD = d; best = c; }
+  }
+  return best;
+}
+
+// ---------- главный рендер ----------
+function circlePath(x, y, r) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); }
+
+function render(now) {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, vw, vh);
+
+  ctx.save();
+  ctx.translate(vw / 2, vh / 2);
+  ctx.scale(cam.zoom, cam.zoom);
+  ctx.translate(-cam.x, -cam.y);
+
+  const vx0 = cam.x - vw / 2 / cam.zoom, vx1 = cam.x + vw / 2 / cam.zoom;
+  const vy0 = cam.y - vh / 2 / cam.zoom, vy1 = cam.y + vh / 2 / cam.zoom;
+  const vis = (x, y, m) => x > vx0 - m && x < vx1 + m && y > vy0 - m && y < vy1 + m;
+
+  // мир
+  ctx.fillStyle = '#030306';
+  ctx.fillRect(0, 0, world.w, world.h);
+  if (S.worldGrid) {
+    ctx.strokeStyle = '#0d0d14'; ctx.lineWidth = 1 / cam.zoom;
+    ctx.beginPath();
+    for (let x = 0; x <= world.w; x += 100) { ctx.moveTo(x, 0); ctx.lineTo(x, world.h); }
+    for (let y = 0; y <= world.h; y += 100) { ctx.moveTo(0, y); ctx.lineTo(world.w, y); }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = '#24243c'; ctx.lineWidth = 3 / cam.zoom;
+  ctx.strokeRect(0, 0, world.w, world.h);
+
+  // растения — тремя пакетами по жирности
+  for (let tier = 0; tier < 3; tier++) {
+    ctx.fillStyle = tier === 0 ? 'rgba(40,120,50,0.85)' : tier === 1 ? 'rgba(50,165,60,0.9)' : 'rgba(90,215,90,0.95)';
+    ctx.beginPath();
+    for (const p of plants) {
+      if (!p.alive || !vis(p.x, p.y, 10)) continue;
+      const t = p.energy < S.plantEnergy * 0.7 ? 0 : p.energy < S.plantEnergy * 1.1 ? 1 : 2;
+      if (t === tier) circlePath(p.x, p.y, p.radius);
+    }
+    ctx.fill();
+  }
+
+  // ошмётки
+  for (const m of meats) {
+    if (!m.alive || !vis(m.x, m.y, 10)) continue;
+    const a = Math.min(1, m.life / 12) * 0.92;
+    ctx.beginPath(); ctx.arc(m.x, m.y, m.radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${m.r},${m.gb},${m.gb},${a})`; ctx.fill();
+    ctx.strokeStyle = `rgba(255,90,70,${a * 0.5})`; ctx.lineWidth = 0.8; ctx.stroke();
+  }
+
+  // источники растений
+  const pulse = Math.sin(now / 500);
+  for (const s of sources) {
+    if (!s.alive || !vis(s.x, s.y, s.r * 2.5)) continue;
+    const gr = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 2.2);
+    gr.addColorStop(0, 'rgba(255,200,100,0.28)'); gr.addColorStop(1, 'rgba(255,200,100,0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(s.x, s.y, s.r * 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = '#e8b830'; ctx.fill();
+    ctx.strokeStyle = '#ff8800'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r * 0.4 + pulse * 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffeeaa'; ctx.fill();
+  }
+
+  // палки
+  ctx.lineCap = 'round';
+  for (const w of walls) {
+    if (!vis((w.x1 + w.x2) / 2, (w.y1 + w.y2) / 2, Math.hypot(w.x2 - w.x1, w.y2 - w.y1) / 2 + w.r + 5)) continue;
+    ctx.strokeStyle = '#3c3f4a'; ctx.lineWidth = w.r * 2;
+    ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
+    ctx.strokeStyle = '#8a8f9c'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+
+  // частицы
+  for (const p of particles) {
+    if (!vis(p.x, p.y, 10)) continue;
+    const a = p.life / p.maxLife;
+    ctx.globalAlpha = a * 0.85;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.2, p.size * a), 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // клетки
+  const detail = cam.zoom > 0.3;
+  for (const c of cells) {
+    if (!c.alive || !vis(c.x, c.y, c.radius + 20)) continue;
+    const r = c.radius * (1 + 0.09 * c.pulse);
+
+    ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+    ctx.globalAlpha = 0.9; ctx.fillStyle = c.color; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 0.8; ctx.stroke();
+
+    // ядро; в танце пульсирует
+    const beat = c.task === 'idle' ? 0.5 + 0.5 * Math.sin(c.dancePhase * 1.0) : c.pulse * 0.5;
+    const nr = r * (0.3 + 0.16 * beat);
+    ctx.beginPath(); ctx.arc(c.x, c.y, nr, 0, Math.PI * 2);
+    ctx.globalAlpha = 0.95; ctx.fillStyle = c.nucColor; ctx.fill(); ctx.globalAlpha = 1;
+    if (c.task === 'idle') { ctx.strokeStyle = `rgba(255,255,255,${0.1 + 0.25 * beat})`; ctx.lineWidth = 0.6; ctx.stroke(); }
+
+    if (S.hpBars && detail) {
+      const bw = r * 2.6, bh = 3, bx = c.x - bw / 2, by = c.y - r - 7;
+      const hf = Math.max(0, c.hp / c.maxHp), hard = Math.min(1, c.hardHp / c.maxHp);
+      ctx.fillStyle = '#222'; ctx.fillRect(bx, by, bw, bh);
+      if (hard > 0) { ctx.fillStyle = '#7a0000'; ctx.fillRect(bx + bw * (1 - hard), by, bw * hard, bh); }
+      ctx.fillStyle = hf > 0.6 ? '#3d9' : hf > 0.3 ? '#da4' : '#d33';
+      ctx.fillRect(bx, by, bw * hf, bh);
+    }
+
+    if (c.leader && detail) drawCrown(c, r);
+
+    if (S.combatLines && detail) {
+      if (c.task === 'hunt' && c.taskTarget && c.taskTarget.alive) {
+        ctx.strokeStyle = 'rgba(255,50,50,0.2)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.taskTarget.x, c.taskTarget.y); ctx.stroke();
+      }
+      if (c.teammate && c.teammate.alive) {
+        ctx.strokeStyle = 'rgba(90,110,255,0.2)'; ctx.lineWidth = 0.6; ctx.setLineDash([3, 5]);
+        ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.teammate.x, c.teammate.y); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  drawHoverOverlay(now);
+  drawToolPreview();
+  ctx.restore();
+}
+
+// Корона вожака стаи: золотая, над полоской HP; на крупном зуме — размер стаи
+function drawCrown(c, r) {
+  const w = Math.max(5, r * 0.95), y0 = c.y - r - 12, h = w * 0.7;
+  ctx.beginPath();
+  ctx.moveTo(c.x - w, y0); ctx.lineTo(c.x - w, y0 - h * 0.55); ctx.lineTo(c.x - w * 0.5, y0 - h * 0.25);
+  ctx.lineTo(c.x, y0 - h); ctx.lineTo(c.x + w * 0.5, y0 - h * 0.25); ctx.lineTo(c.x + w, y0 - h * 0.55);
+  ctx.lineTo(c.x + w, y0); ctx.closePath();
+  ctx.fillStyle = '#ffd23c'; ctx.fill();
+  ctx.strokeStyle = '#a06800'; ctx.lineWidth = 0.9; ctx.stroke();
+  if (cam.zoom > 0.9) {
+    ctx.fillStyle = '#fff'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(String(c.pack + 1), c.x, y0 - h - 2);
+  }
+}
+
+// ---------- подсветка наведённой клетки ----------
+function ring(x, y, r, color, w) {
+  ctx.strokeStyle = color; ctx.lineWidth = w / cam.zoom;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+}
+
+function drawHoverOverlay(now) {
+  const c = input.hovered;
+  if (!c || !c.alive) return;
+  const rel = getRelatives(c);
+  c._rel = rel;
+
+  // родословная: предки — золотые, потомки — бирюзовые
+  for (const a of rel.anc) { ring(a.x, a.y, a.radius + 5, 'rgba(255,200,60,0.95)', 2); }
+  for (const d of rel.desc) { ring(d.x, d.y, d.radius + 5, 'rgba(60,230,255,0.95)', 2); }
+  const rec = lineage.get(c.id);
+  if (rec) {
+    ctx.lineWidth = 1 / cam.zoom;
+    if (rec.parent != null) {
+      const pr = lineage.get(rec.parent);
+      if (pr && pr.cell && pr.cell.alive) {
+        ctx.strokeStyle = 'rgba(255,200,60,0.5)'; ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(pr.cell.x, pr.cell.y); ctx.stroke();
+      }
+    }
+    ctx.strokeStyle = 'rgba(60,230,255,0.4)';
+    for (const k of rec.children) {
+      const kr = lineage.get(k);
+      if (kr && kr.cell && kr.cell.alive) { ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(kr.cell.x, kr.cell.y); ctx.stroke(); }
+    }
+  }
+
+  ring(c.x, c.y, c.radius + 3, 'rgba(255,255,255,0.9)', 1.5);
+
+  // товарищ
+  if (c.teammate && c.teammate.alive) {
+    ring(c.teammate.x, c.teammate.y, c.teammate.radius + 5, 'rgba(110,130,255,1)', 2.5);
+    ctx.strokeStyle = 'rgba(110,130,255,0.8)'; ctx.lineWidth = 1.5 / cam.zoom; ctx.setLineDash([5 / cam.zoom, 4 / cam.zoom]);
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.teammate.x, c.teammate.y); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // цель и построенный маршрут
+  const hasGoal = c.task !== 'idle' && (c.taskTarget || c.task === 'retreat' || c.task === 'explore');
+  if (hasGoal) {
+    const col = c.task === 'hunt' ? '255,70,70' : c.task === 'retreat' ? '255,170,60' : c.task === 'teamup' ? '110,130,255' : '120,255,120';
+    const pts = [c.x, c.y];
+    const r = c.route;
+    if (r.length) { for (let i = 0; i < r.length; i++) pts.push(r[i]); }
+    let endX, endY;
+    if (c.task === 'explore') { endX = c.x + Math.cos(c.wanderAngle) * 120; endY = c.y + Math.sin(c.wanderAngle) * 120; pts.length = 2; pts.push(endX, endY); }
+    else if (c.taskTarget && c.taskTarget.alive && c.task !== 'retreat') { endX = c.taskTarget.x; endY = c.taskTarget.y; if (pts.length === 2) pts.push(endX, endY); else { pts[pts.length - 2] = endX; pts[pts.length - 1] = endY; } }
+    else { endX = pts[pts.length - 2]; endY = pts[pts.length - 1]; if (pts.length === 2) { pts.push(c.fleeX, c.fleeY); endX = c.fleeX; endY = c.fleeY; } }
+    ctx.strokeStyle = `rgba(${col},0.9)`; ctx.lineWidth = 2 / cam.zoom;
+    ctx.setLineDash([8 / cam.zoom, 5 / cam.zoom]);
+    ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+    ctx.stroke(); ctx.setLineDash([]);
+    for (let i = 2; i < pts.length - 2; i += 2) { ctx.fillStyle = `rgba(${col},0.9)`; ctx.beginPath(); ctx.arc(pts[i], pts[i + 1], 3 / cam.zoom, 0, Math.PI * 2); ctx.fill(); }
+    const pr = 8 + 2 * Math.sin(now / 150);
+    ring(endX, endY, pr, `rgba(${col},1)`, 2.5);
+    const t = c.taskTarget;
+    if (t && t.alive && c.task === 'hunt') ring(t.x, t.y, t.radius + 4, 'rgba(255,70,70,1)', 2);
+  }
+}
+
+function drawToolPreview() {
+  if (!input.over) return;
+  const [wx, wy] = screenToWorld(input.mx, input.my);
+  ctx.lineWidth = 1.5 / cam.zoom;
+  const dash = () => ctx.setLineDash([6 / cam.zoom, 5 / cam.zoom]);
+  switch (input.tool) {
+    case 'spawn':
+      ctx.strokeStyle = 'rgba(120,255,160,0.8)';
+      if (S.spawnCount > 1 && S.spawnRadius > 0) { dash(); ctx.beginPath(); ctx.arc(wx, wy, S.spawnRadius, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.beginPath(); ctx.arc(wx, wy, S.cellSize, 0, Math.PI * 2); ctx.stroke();
+      break;
+    case 'plant':
+      ctx.strokeStyle = 'rgba(100,255,100,0.7)'; dash(); ctx.beginPath(); ctx.arc(wx, wy, 25, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      break;
+    case 'source':
+      ctx.strokeStyle = 'rgba(255,200,80,0.8)'; dash();
+      ctx.beginPath(); ctx.arc(wx, wy, 18 + S.sourceRadius + 4, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(wx, wy, 18, 0, Math.PI * 2); ctx.stroke();
+      break;
+    case 'wall':
+      ctx.lineCap = 'round';
+      if (input.wallDrag) {
+        ctx.strokeStyle = 'rgba(180,185,200,0.7)'; ctx.lineWidth = 12;
+        ctx.beginPath(); ctx.moveTo(input.wallDrag.x, input.wallDrag.y); ctx.lineTo(wx, wy); ctx.stroke();
+      } else { ctx.strokeStyle = 'rgba(180,185,200,0.7)'; ctx.beginPath(); ctx.arc(wx, wy, 6, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.lineCap = 'butt';
+      break;
+    case 'erase':
+      ctx.strokeStyle = 'rgba(255,80,80,0.8)'; ctx.beginPath(); ctx.arc(wx, wy, 35, 0, Math.PI * 2); ctx.stroke();
+      break;
+  }
+}
+
+// ==================== HOVER PANEL ====================
+const hoverPanel = document.getElementById('hoverPanel');
+const TASK_NAMES = {
+  idle: '💃 Танцует', forage: '🌿 Сбор растений', forage_meat: '🥩 Сбор мяса', explore: '🧭 Поиск еды',
+  hunt: '🎯 Охота', retreat: '🏃 Отступление', teamup: '🤝 Держится товарища',
+};
+let lastPanelUpdate = 0;
+
+function updateHoverPanel(now) {
+  const c = input.hovered;
+  if (!c || !c.alive) { hoverPanel.style.display = 'none'; return; }
+  if (now - lastPanelUpdate > 90) { lastPanelUpdate = now; hoverPanel.innerHTML = hoverHtml(c); }
+  hoverPanel.style.display = 'block';
+  // не вылезает за экран: меняет сторону от курсора у границ
+  const pw = hoverPanel.offsetWidth, ph = hoverPanel.offsetHeight;
+  const top = canvas.getBoundingClientRect().top;
+  let px = input.mx + 18, py = input.my + 18 + top;
+  if (px + pw > window.innerWidth - 4) px = input.mx - pw - 18;
+  if (py + ph > window.innerHeight - 4) py = input.my + top - ph - 18;
+  hoverPanel.style.left = Math.max(4, px) + 'px';
+  hoverPanel.style.top = Math.max(top + 2, py) + 'px';
+}
+
+function hoverHtml(c) {
+  const def = c.armor / 255, pen = c.strength / 255;
+  const crit = S.critChance * (1 + pen * 0.6) * (1 - def * 0.7) * 100;
+  const upkeep = c.baseUpkeep * S.hungerMult;
+  const tEmpty = upkeep > 0 ? c.energy / upkeep : Infinity;
+  const tDeath = S.starveDmg > 0 ? tEmpty + c.hp / S.starveDmg : Infinity;
+  const hf = c.hp / c.maxHp, hardPct = c.hardHp / c.maxHp * 100;
+  const hpCol = hf > 0.6 ? '#3d9' : hf > 0.3 ? '#da4' : '#d33';
+  const t = c.taskTarget;
+  const rel = c._rel || getRelatives(c);
+  const retreatThr = lerp(0.5, 0.1, c.courage / 255) * (1 - 0.35 * c.regen / 255) * 100;
+  const hungerThr = (0.3 + c.greed / 255 * 0.45) * 100;
+  const f = v => (isFinite(v) ? v.toFixed(1) + 'с' : '∞');
+  const row = (a, b) => `<div class="stat-row"><span>${a}</span><span>${b}</span></div>`;
+  const gcol = ['rgb(%,0,0)', 'rgb(0,0,%)', 'rgb(0,%,0)', 'rgb(%,0,0)', 'rgb(0,0,%)', 'rgb(0,%,0)'];
+  const genome = c.genome.map((b, i) =>
+    `<div title="${GENE_NAMES[i]}: ${b}" style="background:${gcol[i].replace('%', b)};opacity:${i > 2 ? 0.75 : 1}"><i>${b}</i></div>`).join('');
+
+  return `
+    <div class="section-title">Клетка #${c.id}${c.parent ? ` · от #${c.parent}` : ' · заспавнена'} · поколение ${c.gen}</div>
+    <div class="genome-bar">${genome}</div>
+    ${row('❤️ HP', `${c.hp.toFixed(1)} / ${c.maxHp.toFixed(0)}`)}
+    <div class="hp-bar"><div class="hp-fill" style="width:${(hf * 100).toFixed(1)}%;background:${hpCol}"></div>${c.hardHp > 0 ? `<div class="hard-zone" style="width:${hardPct.toFixed(1)}%"></div>` : ''}</div>
+    ${c.hardHp > 0 ? row('<span style="color:#d44">🩸 Хард-урон</span>', `${hardPct.toFixed(0)}% · лечение ×${S.hardHealCost}`) : ''}
+    ${row('⚡ Энергия', `${c.energy.toFixed(1)} / ${c.maxEnergy.toFixed(0)}`)}
+    <div class="hp-bar"><div class="hp-fill" style="width:${(c.energy / c.maxEnergy * 100).toFixed(1)}%;background:#cb4"></div></div>
+    ${row('💀 До 0 энергии / смерти', `${f(tEmpty)} / ${f(tDeath)}`)}
+    <div class="section-title">Тело</div>
+    ${row('🔴 Сила ' + c.strength, `урон ${(c.attackDamage * S.dmgMult).toFixed(1)} · КД ${c.attackCooldown.toFixed(2)}с ${c.attackTimer > 0 ? '⏳' : '✅'}`)}
+    ${row('шанс крита', `${crit.toFixed(1)}%`)}
+    ${row('откидывание', (c.knockback * S.knockMult / c.mass).toFixed(0))}
+    ${row('🔵 Броня ' + c.armor, `−${(def * 50).toFixed(0)}% урона · масса ${c.mass.toFixed(2)}`)}
+    ${row('скорость', (c.speed * S.speedMult).toFixed(0))}
+    ${row('🟢 Реген ' + c.regen, `${c.regenRate.toFixed(1)} HP/с · расход ${upkeep.toFixed(2)}/с`)}
+    ${row('в покое после боя', `через ${(0.5 + 4.5 * (1 - c.regen / 255) + 2).toFixed(1)}с`)}
+    <div class="section-title">Ядро</div>
+    ${row('🔴 Смелость ' + c.courage, `отступит при HP < ${retreatThr.toFixed(0)}%`)}
+    ${row('🔵 Стайность ' + c.sociability, `${c.sociability > 90 ? 'ищет товарища' : 'одиночка'}`)}
+    ${row('🟢 Прожорл. ' + c.greed, `ест при энергии < ${hungerThr.toFixed(0)}%`)}
+    <div class="section-title">Поведение</div>
+    ${row('Задача', TASK_NAMES[c.task] || c.task)}
+    ${t && t.alive && t.id ? row('Цель', '#' + t.id) : ''}
+    ${c.teammate && c.teammate.alive ? row('🤝 Товарищ', '#' + c.teammate.id) : ''}
+    ${row('Возраст · убийств', `${fmtTime(c.age)} · ${c.kills}`)}
+    ${c.leader ? row('<span style="color:#fc3">👑 Вожак стаи</span>', `${c.pack + 1} клеток`) : (c.packRoot && c.packRoot !== c.id && lineage.get(c.packRoot) && lineage.get(c.packRoot).cell && lineage.get(c.packRoot).cell.leader ? row('Стая вожака', '👑 #' + c.packRoot) : '')}
+    <div class="section-title">Род</div>
+    ${row('<span style="color:#fc3">● Предки</span>', `${rel.ancTotal} (живых ${rel.anc.length})`)}
+    ${row('<span style="color:#3ef">● Потомки</span>', `${rel.descTotal} (живых ${rel.desc.length}) · детей ${c.children.length}`)}
+  `;
+}
+
+// ───────── ui.js ─────────
+// ==================== UI ====================
+
+const $ = id => document.getElementById(id);
+
+// ---------- моды ----------
+// Мод — это обычный JS, которому выдаётся объект Life. Можно подписаться на события,
+// менять настройки, спавнить сущности. Загружается из файла .js или вставляется в окно.
+const Life = {
+  version: VERSION,
+  S, world, hooks, stats, lineage,
+  on(name, fn) { if (!hooks[name]) throw new Error('Нет события ' + name + '. Доступны: ' + Object.keys(hooks).join(', ')); hooks[name].push(fn); },
+  get cells() { return cells; }, get plants() { return plants; }, get meats() { return meats; },
+  get walls() { return walls; }, get sources() { return sources; }, get time() { return simTime; },
+  spawnCell, spawnCellsAt, createCell, killCell, randomGenome, bodyColor, nucleusColor, ARCH_NAMES,
+  addPlant(x, y, fat) { plants.push(createPlant(x, y, fat)); },
+  addWall(x1, y1, x2, y2, r) { walls.push({ x1, y1, x2, y2, r: r || 6 }); obstDirty = true; },
+  addSource(x, y) { sources.push(createSource(x, y)); obstDirty = true; },
+  step: stepOnce,
+};
+window.Life = Life;
+const loadedMods = [];
+
+function runMod(code, name) {
+  try {
+    new Function('Life', code)(Life);
+    loadedMods.push(name);
+    setModStatus('✔ Мод «' + name + '» загружен');
+  } catch (e) { setModStatus('✖ Ошибка в «' + name + '»: ' + e.message, true); }
+  renderModList();
+}
+function setModStatus(t, bad) { const el = $('modStatus'); el.textContent = t; el.style.color = bad ? '#f66' : '#6d6'; }
+function renderModList() { $('modList').textContent = loadedMods.length ? 'Загружено: ' + loadedMods.join(', ') : 'Модов нет'; }
+function unloadMods() {
+  for (const k in hooks) hooks[k].length = 0;
+  loadedMods.length = 0; setModStatus('Хуки модов сброшены (изменённые настройки остаются)'); renderModList();
+}
+
+const MOD_EXAMPLE = `// Пример: каждая рождённая клетка с шансом 5% становится «мутантом»
+Life.on('birth', (kid, parent) => {
+  if (Math.random() < 0.05) { kid.genome[0] = 255; kid.strength = 255; kid.color = Life.bodyColor(kid.genome); }
+});
+Life.on('death', (c, cause) => { if (cause === 'kill') console.log('#' + c.id + ' убита'); });`;
+
+// ---------- панель настроек ----------
+function buildSettings() {
+  const body = $('settingsBody');
+  body.innerHTML = '';
+  // выбор стартовой карты
+  const map = document.createElement('div');
+  map.className = 'genbox';
+  map.innerHTML = `<div class="gtitle">🗺 Стартовая карта</div>
+    <div class="btnrow"><select id="mapSelect" style="flex:1">${SCENARIOS.map(sc => `<option value="${sc.id}">${sc.name}</option>`).join('')}</select>
+    <button id="mapStart">▶ Начать</button></div><div id="mapDesc" style="opacity:.75;line-height:1.35"></div>`;
+  body.appendChild(map);
+  const sel = map.querySelector('#mapSelect'), desc = map.querySelector('#mapDesc');
+  sel.value = currentScenario;
+  const showDesc = () => { desc.textContent = getScenario(sel.value).desc; };
+  sel.onchange = showDesc; showDesc();
+  map.querySelector('#mapStart').onclick = () => { startScenario(sel.value); fitCamera(); buildSettings(); saveSettings(); };
+  const groups = {};
+  const getGroup = name => {
+    if (groups[name]) return groups[name];
+    const det = document.createElement('details');
+    det.open = name === 'Спавн';
+    det.innerHTML = `<summary>${name}</summary>`;
+    body.appendChild(det);
+    return (groups[name] = det);
+  };
+
+  for (const d of SETTING_DEFS) {
+    const det = getGroup(d.g);
+    const row = document.createElement('label');
+    row.className = 'srow';
+    const mark = d.restart ? ' <b title="применится при перезапуске мира">↻</b>' : '';
+    row.innerHTML = `<span>${d.label}${mark}</span>`;
+    let el;
+    if (d.type === 'range' || d.type === 'number') {
+      el = document.createElement('input');
+      el.type = d.type; el.min = d.min; el.max = d.max; el.step = d.step; el.value = S[d.key];
+      el.dataset.key = d.key;
+      if (d.type === 'range') {
+        const val = document.createElement('em'); val.textContent = S[d.key];
+        el.oninput = () => { S[d.key] = parseFloat(el.value); val.textContent = S[d.key]; applySetting(d); };
+        row.appendChild(el); row.appendChild(val);
+      } else {
+        el.onchange = () => { S[d.key] = clamp(parseFloat(el.value) || d.def, d.min, d.max); el.value = S[d.key]; applySetting(d); };
+        row.appendChild(el);
+      }
+    } else if (d.type === 'bool') {
+      el = document.createElement('input'); el.type = 'checkbox'; el.checked = S[d.key]; el.dataset.key = d.key;
+      el.onchange = () => { S[d.key] = el.checked; applySetting(d); };
+      row.appendChild(el);
+    } else if (d.type === 'select') {
+      el = document.createElement('select'); el.dataset.key = d.key;
+      for (const [v, t] of d.options) { const o = document.createElement('option'); o.value = v; o.textContent = t; el.appendChild(o); }
+      el.value = S[d.key];
+      el.onchange = () => { S[d.key] = el.value; applySetting(d); };
+      row.appendChild(el);
+    }
+    det.appendChild(row);
+  }
+
+  // геном спавна
+  const sp = getGroup('Спавн');
+  const box = document.createElement('div');
+  box.className = 'genbox';
+  box.innerHTML = '<div class="gtitle">Геном для спавна (центр рандомизации)</div>';
+  const arch = document.createElement('select');
+  arch.innerHTML = '<option value="">— архетип из атласа —</option>' + ARCH_NAMES.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+  box.appendChild(arch);
+  const sliders = [];
+  const colors = ['#f55', '#58f', '#5d5', '#f77', '#79f', '#7e7'];
+  GENE_NAMES.forEach((name, i) => {
+    const r = document.createElement('label'); r.className = 'srow';
+    r.innerHTML = `<span style="color:${colors[i]}">${name}</span>`;
+    const inp = document.createElement('input'); inp.type = 'range'; inp.min = 0; inp.max = 255; inp.value = S.spawnGenome[i];
+    const val = document.createElement('em'); val.textContent = S.spawnGenome[i];
+    inp.oninput = () => { S.spawnGenome[i] = +inp.value; val.textContent = inp.value; saveSettings(); };
+    r.appendChild(inp); r.appendChild(val); box.appendChild(r);
+    sliders.push([inp, val]);
+  });
+  arch.onchange = () => {
+    if (arch.value === '') return;
+    const i = +arch.value, lv = [Math.floor(i / 9), Math.floor(i / 3) % 3, i % 3];
+    lv.forEach((l, k) => { S.spawnGenome[k] = LV[l]; sliders[k][0].value = LV[l]; sliders[k][1].textContent = LV[l]; });
+    ARCH_NUCLEUS[ARCH_NAMES[i]].forEach((v, k) => { S.spawnGenome[3 + k] = v; sliders[3 + k][0].value = v; sliders[3 + k][1].textContent = v; });
+    S.spawnMode = 'exact';
+    const m = body.querySelector('select[data-key="spawnMode"]'); if (m) m.value = 'exact';
+    saveSettings();
+  };
+  const rnd = document.createElement('button');
+  rnd.textContent = '🎲 Случайный геном';
+  rnd.onclick = () => {
+    S.spawnGenome = randomGenome();
+    S.spawnGenome.forEach((b, k) => { sliders[k][0].value = b; sliders[k][1].textContent = b; });
+    saveSettings();
+  };
+  box.appendChild(rnd);
+  sp.appendChild(box);
+
+  // моды
+  const md = getGroup('Моды');
+  md.insertAdjacentHTML('beforeend', `
+    <div class="genbox">
+      <div class="gtitle">Моды (JS с объектом Life)</div>
+      <textarea id="modCode" rows="7" spellcheck="false"></textarea>
+      <div class="btnrow"><button id="modRun">▶ Запустить код</button><button id="modExample">Пример</button>
+      <button id="modUnload">Сбросить хуки</button></div>
+      <input type="file" id="modFile" accept=".js,text/javascript">
+      <div id="modStatus" style="margin-top:4px"></div><div id="modList" style="opacity:.7"></div>
+    </div>`);
+  $('modExample').onclick = () => { $('modCode').value = MOD_EXAMPLE; };
+  $('modRun').onclick = () => runMod($('modCode').value, 'код из окна');
+  $('modUnload').onclick = unloadMods;
+  $('modFile').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    runMod(await f.text(), f.name); e.target.value = '';
+  };
+  renderModList();
+}
+
+function applySetting(d) {
+  if (d.key === 'cellSize') refreshCellRadius();
+  saveSettings();
+}
+
+// ---------- инструменты ----------
+const TOOLS = {
+  spawn: ['btnSpawn', 'Спавн клеток: клик (кружок — радиус спавна)'],
+  plant: ['btnPlant', 'Растения: клик сыплет несколько растений'],
+  source: ['btnSource', 'Источник растений: клик ставит точку спавна'],
+  wall: ['btnWall', 'Палка: зажми и потяни, отпусти — препятствие'],
+  erase: ['btnErase', 'Ластик: клик по клетке, палке или источнику'],
+};
+function setTool(t) {
+  input.tool = t; input.wallDrag = null;
+  for (const k in TOOLS) $(TOOLS[k][0]).classList.toggle('active', k === t);
+  $('toolIndicator').textContent = TOOLS[t][1];
+}
+
+function toolAction(wx, wy) {
+  switch (input.tool) {
+    case 'spawn': spawnCellsAt(wx, wy); break;
+    case 'plant':
+      for (let i = 0; i < 6; i++) {
+        const pos = findFreePos(wx + rand(-25, 25), wy + rand(-25, 25), 4);
+        if (pos.ok) plants.push(createPlant(pos.x, pos.y));
+      }
+      break;
+    case 'source': {
+      const pos = findFreePos(wx, wy, 22);
+      if (pos.ok) { sources.push(createSource(pos.x, pos.y)); obstDirty = true; }
+      break;
+    }
+    case 'erase': {
+      let best = null, bd = 35, kind = '';
+      for (const c of cells) { const d = Math.hypot(c.x - wx, c.y - wy) - c.radius; if (c.alive && d < bd) { bd = d; best = c; kind = 'cell'; } }
+      for (const w of walls) { const d = distPointSeg(wx, wy, w.x1, w.y1, w.x2, w.y2) - w.r; if (d < bd) { bd = d; best = w; kind = 'wall'; } }
+      for (const s of sources) { const d = Math.hypot(s.x - wx, s.y - wy) - s.r; if (s.alive && d < bd) { bd = d; best = s; kind = 'source'; } }
+      if (kind === 'cell') killCell(best, 'erase');
+      else if (kind === 'wall') { walls.splice(walls.indexOf(best), 1); obstDirty = true; }
+      else if (kind === 'source') { best.alive = false; obstDirty = true; }
+      break;
+    }
+  }
+}
+
+// ---------- ввод (мышь + касания) ----------
+const ptrs = new Map();
+let mode = null, pinch = null, space = false;
+const keys = new Set();
+
+function canvasPos(e) { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+
+canvas.addEventListener('pointerdown', e => {
+  if (wallpaper) return;
+  canvas.setPointerCapture(e.pointerId);
+  const [sx, sy] = canvasPos(e);
+  ptrs.set(e.pointerId, { sx, sy, x: sx, y: sy, camX: cam.x, camY: cam.y, touch: e.pointerType === 'touch' });
+  input.mx = sx; input.my = sy; input.over = true;
+
+  if (ptrs.size === 2) {                       // два пальца: щипок/панорама
+    const [a, b] = [...ptrs.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+    mode = 'pinch'; input.wallDrag = null; return;
+  }
+  const panBtn = e.button === 1 || e.button === 2 || (e.button === 0 && (e.shiftKey || space));
+  if (panBtn) { mode = 'pan'; return; }
+  const [wx, wy] = screenToWorld(sx, sy);
+  if (e.pointerType === 'touch' && input.tool !== 'wall') { mode = 'tap'; return; }
+  mode = 'tool';
+  if (input.tool === 'wall') input.wallDrag = { x: wx, y: wy };
+  else toolAction(wx, wy);
+});
+
+canvas.addEventListener('pointermove', e => {
+  if (wallpaper) return;
+  const [sx, sy] = canvasPos(e);
+  input.mx = sx; input.my = sy; input.over = true;
+  const p = ptrs.get(e.pointerId);
+  if (!p) return;
+  p.x = sx; p.y = sy;
+  if (mode === 'pinch' && ptrs.size >= 2) {
+    const [a, b] = [...ptrs.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y), cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    if (pinch.d > 0) zoomAt(cx, cy, d / pinch.d);
+    cam.x -= (cx - pinch.cx) / cam.zoom; cam.y -= (cy - pinch.cy) / cam.zoom;
+    pinch = { d, cx, cy };
+  } else if (mode === 'pan') {
+    cam.x = p.camX - (sx - p.sx) / cam.zoom; cam.y = p.camY - (sy - p.sy) / cam.zoom;
+  } else if (mode === 'tap' && Math.hypot(sx - p.sx, sy - p.sy) > 8) {
+    mode = 'pan';
+  }
+});
+
+function endPointer(e) {
+  const p = ptrs.get(e.pointerId);
+  if (!p) return;
+  const [sx, sy] = canvasPos(e);
+  if (mode === 'tool' && input.tool === 'wall' && input.wallDrag) {
+    const [wx, wy] = screenToWorld(sx, sy), s = input.wallDrag;
+    walls.push({ x1: s.x, y1: s.y, x2: Math.hypot(wx - s.x, wy - s.y) > 4 ? wx : s.x, y2: Math.hypot(wx - s.x, wy - s.y) > 4 ? wy : s.y, r: 6 });
+    obstDirty = true; input.wallDrag = null;
+  } else if (mode === 'tap') {
+    const [wx, wy] = screenToWorld(sx, sy);
+    toolAction(wx, wy);
+  }
+  ptrs.delete(e.pointerId);
+  mode = null;
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); mode = null; input.wallDrag = null; });
+canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') input.over = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const [sx, sy] = canvasPos(e);
+  zoomAt(sx, sy, e.deltaY > 0 ? 0.9 : 1.1);
+}, { passive: false });
+
+window.addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); space = true; togglePause(); }
+  else if (k === '.') stepOnce();
+  else if (k === 'f') fitCamera();
+  else if (k === 'h') toggleWallpaper();
+  else if (k === 'escape') { if (wallpaper) toggleWallpaper(); closePanels(); closeSummary(); }
+  else if (k >= '1' && k <= '5') setTool(Object.keys(TOOLS)[+k - 1]);
+  else if (k === '+' || k === '=') zoomAt(vw / 2, vh / 2, 1.15);
+  else if (k === '-') zoomAt(vw / 2, vh / 2, 1 / 1.15);
+  else keys.add(k);
+});
+window.addEventListener('keyup', e => { keys.delete(e.key.toLowerCase()); if (e.key === ' ') space = false; });
+
+function handleKeys(dt) {
+  let dx = 0, dy = 0;
+  if (keys.has('a') || keys.has('arrowleft')) dx -= 1;
+  if (keys.has('d') || keys.has('arrowright')) dx += 1;
+  if (keys.has('w') || keys.has('arrowup')) dy -= 1;
+  if (keys.has('s') || keys.has('arrowdown')) dy += 1;
+  if (dx || dy) { cam.x += dx * 700 * dt / cam.zoom; cam.y += dy * 700 * dt / cam.zoom; }
+}
+
+// ---------- верхняя панель ----------
+function togglePause() { paused = !paused; $('btnPlay').textContent = paused ? '▶' : '⏸'; $('btnPlay').classList.toggle('active', !paused); }
+$('btnPlay').onclick = togglePause;
+$('btnStep').onclick = () => { if (!paused) togglePause(); stepOnce(); };
+$('btnFit').onclick = fitCamera;
+
+// ---------- режим обоев: только клетки, на весь экран, вымершие возрождаются ----------
+let wallpaper = false, wallpaperPrevRespawn = false;
+function toggleWallpaper() {
+  wallpaper = !wallpaper;
+  document.body.classList.toggle('wallpaper', wallpaper);
+  closePanels(); closeSummary();
+  if (wallpaper) {
+    wallpaperPrevRespawn = S.autoRespawn; S.autoRespawn = true;
+    input.over = false; input.hovered = null;
+    if (paused) togglePause();
+    try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {}); } catch (e) { /* ignore */ }
+  } else {
+    S.autoRespawn = wallpaperPrevRespawn;
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) { /* ignore */ }
+  }
+  requestAnimationFrame(() => { resizeCanvas(); fitCamera(); });
+}
+$('btnWallpaper').onclick = toggleWallpaper;
+canvas.addEventListener('dblclick', () => { if (wallpaper) toggleWallpaper(); });
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && wallpaper) toggleWallpaper(); setTimeout(resizeCanvas, 50); });
+
+const speed = $('speedSlider');
+speed.oninput = () => { timeScale = parseFloat(speed.value); $('speedVal').textContent = timeScale.toFixed(1) + '×'; };
+
+for (const t in TOOLS) $(TOOLS[t][0]).onclick = () => setTool(t);
+
+function closePanels() { for (const id of ['settingsPanel', 'statsPanel', 'savesPanel']) $(id).style.display = 'none'; }
+function togglePanel(id) {
+  const el = $(id), show = el.style.display !== 'block';
+  closePanels(); el.style.display = show ? 'block' : 'none';
+}
+$('btnSettings').onclick = () => togglePanel('settingsPanel');
+$('btnStats').onclick = () => togglePanel('statsPanel');
+$('btnSummary').onclick = openSummary;
+
+// ---------- сейвы ----------
+function saveMsg(t, bad) { const el = $('saveMsg'); el.textContent = t || ''; el.style.color = bad ? '#f66' : '#6d6'; }
+
+function renderSlots() {
+  const box = $('slotList');
+  box.innerHTML = '';
+  for (let i = 1; i <= SLOT_COUNT; i++) {
+    const m = slotMeta(i), row = document.createElement('div');
+    row.className = 'slot';
+    row.innerHTML = `<div><b>Слот ${i}</b><small>${m ? `${new Date(m.at).toLocaleString()} · ${fmtTime(m.t)} · ${m.cells} клеток · ${m.kb} КБ` : 'пусто'}</small></div>
+      <button data-a="save">Сохранить</button><button data-a="load" ${m ? '' : 'disabled'}>Загрузить</button><button data-a="del" ${m ? '' : 'disabled'}>✕</button>`;
+    row.querySelector('[data-a=save]').onclick = () => { const e = saveSlot(i); saveMsg(e || 'Сохранено в слот ' + i, !!e); renderSlots(); };
+    row.querySelector('[data-a=load]').onclick = () => { const e = loadSlot(i); saveMsg(e || 'Загружено из слота ' + i, !!e); if (!e) afterLoad(); };
+    row.querySelector('[data-a=del]').onclick = () => { deleteSlot(i); renderSlots(); };
+    box.appendChild(row);
+  }
+}
+
+function afterLoad() {
+  buildSettings(); renderSlots();
+  speed.value = timeScale; $('speedVal').textContent = timeScale.toFixed(1) + '×';
+}
+
+$('btnSaves').onclick = () => { togglePanel('savesPanel'); renderSlots(); saveMsg(''); };
+$('saveDownload').onclick = () => { downloadSave(); saveMsg('Файл скачан'); };
+$('saveUpload').onclick = () => $('saveFile').click();
+$('saveFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const err = await loadSaveFile(f); e.target.value = '';
+  saveMsg(err || 'Загружено из файла', !!err); if (!err) afterLoad();
+};
+let autoSaveTimer = null;
+$('autoSave').onchange = function () {
+  clearInterval(autoSaveTimer);
+  if (this.checked) autoSaveTimer = setInterval(() => { const e = saveSlot(1); if (e) saveMsg(e, true); }, 60000);
+};
+$('btnRestart').onclick = () => { spawnInitial(); fitCamera(); };
+$('btnResetSettings').onclick = () => { resetSettings(); buildSettings(); refreshCellRadius(); };
+
+// ---------- живая статистика ----------
+function updateStatsPanel() {
+  if ($('statsPanel').style.display !== 'block') return;
+  $('stCells').textContent = cells.length;
+  $('stPlants').textContent = plants.length;
+  $('stMeat').textContent = meats.length;
+  $('stSources').textContent = sources.length;
+  $('stKills').textContent = stats.kills;
+  $('stBirths').textContent = stats.births;
+  $('stStarve').textContent = stats.starve;
+  $('stGen').textContent = stats.maxGen;
+  $('stPacks').textContent = packLeaders;
+  $('stTime').textContent = fmtTime(simTime);
+  drawLiveCharts($('popChart'), $('statChart'));
+}
+
+// ---------- итоги ----------
+function closeSummary() { $('summary').style.display = 'none'; }
+
+function openSummary() {
+  closePanels();
+  if (!paused) togglePause();
+  const el = $('summary');
+  el.style.display = 'block';
+  const gs = generationSeries();
+  const arche = archetypeCounts();
+  const topA = arche.slice(0, 8);
+  const maxA = topA.length ? topA[0].n : 1;
+  const avgAge = cells.length ? cells.reduce((s, c) => s + c.age, 0) / cells.length : 0;
+
+  el.querySelector('.sumBody').innerHTML = `
+    <div class="sumTop">
+      <div class="kpi"><b>${fmtTime(simTime)}</b>время</div>
+      <div class="kpi"><b>${cells.length}</b>живых</div>
+      <div class="kpi"><b>${stats.births}</b>рождений</div>
+      <div class="kpi"><b>${stats.kills}</b>убийств</div>
+      <div class="kpi"><b>${stats.starve}</b>от голода</div>
+      <div class="kpi"><b>${stats.maxGen}</b>макс. поколение</div>
+      <div class="kpi"><b>${fmtTime(avgAge)}</b>средний возраст</div>
+    </div>
+    <div class="sumRec">🏆 Дольше всех жила #${stats.maxAgeId} (${fmtTime(stats.maxAge)}) ·
+      больше всех убила #${stats.maxKillsId} (${stats.maxKills}) ·
+      больше всех детей у #${stats.maxKidsId} (${stats.maxKids})</div>
+    <h4>Архетипы среди живых</h4>
+    <div class="arch">${topA.map(a => `<div><span>${a.name}</span><i style="width:${a.n / maxA * 100}%"></i><em>${a.n}</em></div>`).join('') || 'Никого не осталось'}</div>
+    <div class="charts">
+      ${['c1:Популяция и ресурсы', 'c2:Средние характеристики тела (тренд)', 'c3:Средние характеристики ядра (тренд)',
+         'c4:Накопительно: рождения, убийства, голод', 'c5:Среднее поколение популяции', 'c6:Тело по поколениям (среднее при рождении)',
+         'c7:Ядро по поколениям (среднее при рождении)', 'c8:Сколько клеток родилось в каждом поколении',
+         'c9:Распределение тела среди живых', 'c10:Распределение ядра среди живых']
+        .map(s => { const [id, t] = s.split(':'); return `<div class="chartCard"><div>${t}</div><canvas id="${id}"></canvas></div>`; }).join('')}
+    </div>`;
+
+  const x1 = hist.t.length ? hist.t[hist.t.length - 1] : 0, xo = { x0: 0, x1, xFmt: fmtTime };
+  drawChart($('c1'), { ...xo, series: [
+    { label: 'Клетки', color: '#4d9', data: hist.pop }, { label: 'Растения', color: '#7c4', data: hist.plants }, { label: 'Мясо', color: '#e65', data: hist.meat }] });
+  drawChart($('c2'), { ...xo, yMin: 0, yMax: 255, series: SERIES.body() });
+  drawChart($('c3'), { ...xo, yMin: 0, yMax: 255, series: SERIES.nucleus() });
+  drawChart($('c4'), { ...xo, series: [
+    { label: 'Рождения', color: '#4d9', data: hist.births }, { label: 'Убийства', color: '#f55', data: hist.kills }, { label: 'Голод', color: '#ca4', data: hist.starve }] });
+  drawChart($('c5'), { ...xo, series: [{ label: 'Поколение', color: '#c8f', data: hist.gen }] });
+  const gx = { x0: 0, x1: Math.max(0, gs.gens.length - 1), xFmt: v => 'пок. ' + Math.round(v) };
+  drawChart($('c6'), { ...gx, yMin: 0, yMax: 255, series: [
+    { label: 'Сила', color: '#f55', data: gs.str }, { label: 'Броня', color: '#58f', data: gs.arm }, { label: 'Реген', color: '#5d5', data: gs.reg }] });
+  drawChart($('c7'), { ...gx, yMin: 0, yMax: 255, series: [
+    { label: 'Смелость', color: '#f77', data: gs.cou }, { label: 'Стайность', color: '#79f', data: gs.soc }, { label: 'Прожорл.', color: '#7e7', data: gs.gre }] });
+  drawChart($('c8'), { ...gx, series: [{ label: 'Клеток', color: '#fa4', data: gs.n }] });
+  const labels = ['0', '32', '64', '96', '128', '160', '192', '224'];
+  drawBars($('c9'), { labels, series: [
+    { label: 'Сила', color: '#f55', data: histogram(cells, 'strength', 8) },
+    { label: 'Броня', color: '#58f', data: histogram(cells, 'armor', 8) },
+    { label: 'Реген', color: '#5d5', data: histogram(cells, 'regen', 8) }] });
+  drawBars($('c10'), { labels, series: [
+    { label: 'Смелость', color: '#f77', data: histogram(cells, 'courage', 8) },
+    { label: 'Стайность', color: '#79f', data: histogram(cells, 'sociability', 8) },
+    { label: 'Прожорл.', color: '#7e7', data: histogram(cells, 'greed', 8) }] });
+}
+
+$('sumClose').onclick = closeSummary;
+$('sumExport').onclick = () => {
+  const data = { version: VERSION, time: simTime, stats, hist, generations: generationSeries(), archetypes: archetypeCounts() };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cells4-stats.json'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+
+// ==================== MAIN LOOP ====================
+let lastT = 0, fps = 60, uiTimer = 0;
+
+function frame(now) {
+  const dt = lastT ? (now - lastT) / 1000 : 0.016;
+  lastT = now;
+  fps += (1 / Math.max(dt, 0.001) - fps) * 0.05;
+  handleKeys(dt);
+  advance(dt);
+
+  input.hovered = input.over && !wallpaper ? pickCell(...screenToWorld(input.mx, input.my)) : null;
+  render(now);
+  updateHoverPanel(now);
+
+  uiTimer += dt;
+  if (uiTimer > 0.4) {
+    uiTimer = 0;
+    $('stats').textContent =
+      `${cells.length} клеток · ${plants.length} раст. · ${meats.length} мяса · ${sources.length} ист. · ${fmtTime(simTime)} · ${fps.toFixed(0)} fps`;
+    updateStatsPanel();
+  }
+  requestAnimationFrame(frame);
+}
+
+function init() {
+  loadSettings();
+  buildSettings();
+  speed.value = timeScale; $('speedVal').textContent = timeScale.toFixed(1) + '×';
+  resizeCanvas();
+  spawnInitial();
+  fitCamera();
+  setTool('spawn');
+  requestAnimationFrame(frame);
+}
+init();
+
+</script>
+</body>
+</html>

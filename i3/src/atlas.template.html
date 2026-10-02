@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Архетипы клеток</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #050709; --bg-top: #0d1a2e; --card: rgba(10,12,20,0.85); --modal: rgba(8,10,18,0.97);
+  --text: #e2e8f0; --dim: rgba(255,255,255,0.45); --faint: rgba(255,255,255,0.25); --track: rgba(255,255,255,0.1);
+  --red: #ef4444; --red-t: #f87171; --blue: #3b82f6; --blue-t: #60a5fa; --green: #22c55e; --green-t: #4ade80;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  min-height: 100vh; color: var(--text); font-family: 'IBM Plex Mono', monospace;
+  background: var(--bg) radial-gradient(ellipse 120% 80% at 50% -10%, var(--bg-top) 0%, var(--bg) 60%) no-repeat;
+}
+::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: #1e2535; border-radius: 4px; }
+.serif { font-family: 'Cinzel', serif; }
+
+header { text-align: center; padding: 40px 16px 22px; }
+.kicker { font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
+h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); font-weight: 700; letter-spacing: .05em; color: #fff; margin-bottom: 8px; }
+.sub { color: var(--dim); font-size: 13px; max-width: 520px; margin: 0 auto; line-height: 1.5; }
+.legend { display: flex; justify-content: center; gap: 22px; margin-top: 14px; font-size: 12px; flex-wrap: wrap; }
+.legend .r { color: var(--red-t); } .legend .b { color: var(--blue-t); } .legend .g { color: var(--green-t); }
+.links { margin-top: 12px; font-size: 12px; } .links a { color: #9ac; }
+
+.filters { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 0 16px 28px; }
+.filters button {
+  font: inherit; font-size: 13px; padding: 6px 16px; border-radius: 999px; cursor: pointer;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--dim); transition: all .15s;
+}
+.filters button.on { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.25); color: #fff; }
+.sort { display: flex; justify-content: center; gap: 8px; margin: -16px 0 24px; font-size: 12px; color: var(--dim); align-items: center; flex-wrap: wrap; }
+.sort select { font: inherit; font-size: 12px; background: #0c1018; color: var(--text); border: 1px solid #222a38; border-radius: 6px; padding: 3px 6px; }
+
+main { max-width: 1040px; margin: 0 auto; padding: 0 16px 64px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.card {
+  cursor: pointer; border-radius: 16px; padding: 16px; background: var(--card); backdrop-filter: blur(8px);
+  border: 1px solid; transition: transform .2s; text-align: left; font: inherit; color: inherit; width: 100%;
+}
+.card:hover { transform: scale(1.03); } .card:active { transform: scale(.98); }
+.card:focus-visible { outline: 2px solid #9ac; outline-offset: 2px; }
+.head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.orb { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; position: relative; }
+.orb i { position: absolute; left: 50%; top: 50%; width: 34%; height: 34%; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+.name { font-weight: 700; color: #fff; font-size: 16px; line-height: 1.2; }
+.lv { font-size: 11px; color: var(--dim); margin-top: 2px; }
+.bar { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.bar > span:first-child { font-size: 11px; width: 92px; flex-shrink: 0; }
+.track { flex: 1; height: 6px; background: var(--track); border-radius: 99px; overflow: hidden; }
+.track b { display: block; height: 100%; border-radius: 99px; }
+.bar em { font-style: normal; font-size: 11px; color: rgba(255,255,255,.4); width: 44px; text-align: right; }
+.fit { margin-top: 10px; font-size: 11px; color: var(--dim); display: flex; justify-content: space-between; }
+.fit b { color: #fff; font-weight: 500; }
+.empty { text-align: center; color: rgba(255,255,255,.3); padding: 64px 0; }
+footer { text-align: center; padding-bottom: 32px; font-size: 11px; color: rgba(255,255,255,.22); line-height: 1.6; padding-inline: 16px; }
+
+/* modal */
+.overlay { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.75); backdrop-filter: blur(6px); }
+.overlay.open { display: flex; }
+.modal { position: relative; max-width: 460px; width: 100%; max-height: calc(100vh - 32px); overflow-y: auto; border-radius: 24px; padding: 24px; background: var(--modal); border: 1.5px solid; }
+.close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: rgba(255,255,255,.4); font-size: 20px; cursor: pointer; }
+.close:hover { color: #fff; }
+.modal .head { margin-bottom: 18px; } .modal .orb { width: 64px; height: 64px; }
+.modal h2 { font-size: 24px; color: #fff; }
+.modal p { color: rgba(255,255,255,.75); font-size: 13.5px; line-height: 1.6; margin: 14px 0; }
+.sect { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); margin: 16px 0 8px; }
+.box { border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+.box.good { background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.2); }
+.box.bad { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.2); }
+.box div { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
+.box.good div { color: var(--green-t); } .box.bad div { color: var(--red-t); }
+.box span { color: rgba(255,255,255,.7); font-size: 13px; line-height: 1.5; }
+.nums { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; font-size: 12px; }
+.nums div { display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.05); padding: 3px 0; }
+.nums span { color: var(--dim); } .nums b { font-weight: 500; color: #fff; }
+.hint { font-size: 11px; color: rgba(255,255,255,.35); margin-top: 6px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<header>
+  <div class="kicker">Биологический атлас · Клетки 4</div>
+  <h1 class="serif">Архетипы Клеток</h1>
+  <p class="sub">27 форм жизни — комбинации силы, брони и регена. У каждой своё «родное» ядро и свои шансы выжить в симуляции.</p>
+  <div class="legend"><span class="r">■ Сила</span><span class="b">■ Броня</span><span class="g">■ Реген</span></div>
+  <div class="links"><a href="i3/cells.html">▶ Открыть игру</a></div>
+</header>
+
+<nav class="filters" id="filters" aria-label="Фильтр архетипов"></nav>
+<div class="sort"><label for="sortSel">Порядок:</label>
+  <select id="sortSel"><option value="atlas">как в атласе</option><option value="fit">сила в симуляции</option><option value="name">по имени</option></select>
+</div>
+
+<main>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>Нет совпадений</div>
+</main>
+
+<footer>○ беден · ◑ богат · ● полон · нажми карточку для деталей<br><span id="balNote"></span></footer>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="mName">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script>
+/*@DATA@*/
+
+const LV_LABEL = ['беден', 'богат', 'полон'], LV_SHORT = ['○', '◑', '●'];
+const FILTERS = [['all', 'Все 27'], ['str', '🔴 Сила'], ['arm', '🔵 Броня'], ['reg', '🟢 Реген'], ['pure', 'Чистые'], ['hybrid', 'Гибриды']];
+const rgb = c => [LV[c.str], LV[c.reg], LV[c.arm]];          // красный = сила, зелёный = реген, синий = броня
+const rgba = (c, a) => `rgba(${rgb(c).join(',')},${a})`;
+const glow = c => `0 0 18px 4px ${rgba(c, .45)}, 0 0 40px 8px ${rgba(c, .18)}`;
+const nucCol = c => `rgb(${c.nuc[0]},${c.nuc[2]},${c.nuc[1]})`; // ядро: смелость, прожорливость, стайность
+const orb = (c, big) => `<div class="orb" style="background:radial-gradient(circle at 38% 38%, rgba(255,255,255,.35), rgb(${rgb(c).join(',')}) 60%);box-shadow:${glow(c)}"><i style="background:${nucCol(c)}"></i></div>`;
+
+function dominant(c) {
+  const m = Math.max(c.str, c.arm, c.reg);
+  if (m === 0) return 'none';
+  return ['str', 'arm', 'reg'].filter(k => c[k] === m);
+}
+function match(c, f) {
+  if (f === 'all') return true;
+  const d = dominant(c);
+  if (f === 'pure') return d === 'none' || d.length === 1;
+  if (f === 'hybrid') return Array.isArray(d) && d.length > 1;
+  return Array.isArray(d) && d.includes(f);
+}
+
+// Те же формулы, что в движке (Iterations/Claude/src/world.js)
+function gameStats(c) {
+  const s = LV[c.str], a = LV[c.arm], r = LV[c.reg];
+  const mass = 1 + a / 255 * 1.4 + s / 255 * 0.35;
+  return {
+    hp: 90 + a * 0.6, dmg: 6 + s / 255 * 36, cd: 0.25 + s / 255 * 1.4, crit: 15 * (1 + s / 255 * 0.6),
+    def: a / 255 * 55, mass, speed: (300 - a * 0.45) / mass, regen: r / 255 * 38,
+    upkeep: 1 + s / 255 * 0.9 + a / 255 * 0.3 + r / 255 * 0.8,
+  };
+}
+
+const bar = (label, color, pct, text) =>
+  `<div class="bar"><span style="color:${color}">${label}</span><div class="track"><b style="width:${pct}%;background:${color}"></b></div><em>${text}</em></div>`;
+const bodyBars = c => [['Сила', 'str', 'var(--red)'], ['Броня', 'arm', 'var(--blue)'], ['Реген', 'reg', 'var(--green)']]
+  .map(([l, k, col]) => bar(l, col, [8, 50, 100][c[k]], LV_LABEL[c[k]])).join('');
+const fitText = f => (f >= 1.5 ? 'процветает' : f >= 0.9 ? 'держится' : f >= 0.5 ? 'с трудом' : 'вымирает');
+
+let filter = 'all', order = 'atlas';
+try { order = localStorage.getItem('atlas.order') || 'atlas'; } catch (e) { /* ignore */ }
+
+function renderFilters() {
+  const el = document.getElementById('filters');
+  el.innerHTML = FILTERS.map(([id, l]) => `<button data-f="${id}" class="${id === filter ? 'on' : ''}" aria-pressed="${id === filter}">${l}</button>`).join('');
+  el.querySelectorAll('button').forEach(b => b.onclick = () => { filter = b.dataset.f; renderFilters(); renderGrid(); });
+}
+
+function renderGrid() {
+  let list = CELLS.map((c, i) => ({ c, i })).filter(({ c }) => match(c, filter));
+  if (order === 'fit') list.sort((a, b) => b.c.fit - a.c.fit);
+  if (order === 'name') list.sort((a, b) => a.c.name.localeCompare(b.c.name, 'ru'));
+  document.getElementById('grid').innerHTML = list.map(({ c, i }) => `
+    <button class="card" data-i="${i}" style="border-color:${rgba(c, .35)}">
+      <div class="head">${orb(c)}<div><div class="name serif">${c.name}</div>
+        <div class="lv"><span style="color:var(--red-t)">${LV_SHORT[c.str]}</span> <span style="color:var(--blue-t)">${LV_SHORT[c.arm]}</span> <span style="color:var(--green-t)">${LV_SHORT[c.reg]}</span></div></div></div>
+      ${bodyBars(c)}
+      <div class="fit"><span>в симуляции</span><b>${c.fit.toFixed(2)} · ${fitText(c.fit)}</b></div>
+    </button>`).join('');
+  document.getElementById('empty').hidden = list.length > 0;
+  document.querySelectorAll('.card').forEach(el => el.onclick = () => openModal(CELLS[+el.dataset.i]));
+}
+
+let lastFocus = null;
+function openModal(c) {
+  const g = gameStats(c);
+  const m = document.getElementById('modal');
+  m.style.borderColor = rgba(c, .5); m.style.boxShadow = glow(c);
+  m.innerHTML = `
+    <button class="close" aria-label="Закрыть">✕</button>
+    <div class="head">${orb(c, true)}<div><h2 class="serif" id="mName">${c.name}</h2>
+      <div class="lv">Сила: <span style="color:var(--red-t)">${LV_LABEL[c.str]}</span> · Броня: <span style="color:var(--blue-t)">${LV_LABEL[c.arm]}</span> · Реген: <span style="color:var(--green-t)">${LV_LABEL[c.reg]}</span></div></div></div>
+    ${bodyBars(c)}
+    <p>${c.desc}</p>
+    <div class="box good"><div>✦ Хорошо показывает себя</div><span>${c.good}</span></div>
+    <div class="box bad"><div>✦ Слабые места</div><span>${c.bad}</span></div>
+    <div class="sect">Родное ядро (характер)</div>
+    ${bar('Смелость', '#f77', c.nuc[0] / 2.55, c.nuc[0])}
+    ${bar('Стайность', '#79f', c.nuc[1] / 2.55, c.nuc[1])}
+    ${bar('Прожорливость', '#7e7', c.nuc[2] / 2.55, c.nuc[2])}
+    <div class="sect">В игре</div>
+    <div class="nums">
+      <div><span>HP</span><b>${g.hp.toFixed(0)}</b></div><div><span>Урон</span><b>${g.dmg.toFixed(1)}</b></div>
+      <div><span>КД удара</span><b>${g.cd.toFixed(2)} с</b></div><div><span>Крит</span><b>${g.crit.toFixed(0)}%</b></div>
+      <div><span>Защита</span><b>−${g.def.toFixed(0)}%</b></div><div><span>Масса</span><b>${g.mass.toFixed(2)}</b></div>
+      <div><span>Скорость</span><b>${g.speed.toFixed(0)}</b></div><div><span>Реген</span><b>${g.regen.toFixed(1)} HP/с</b></div>
+      <div><span>Расход</span><b>${g.upkeep.toFixed(2)}/с</b></div><div><span>В симуляции</span><b>${c.fit.toFixed(2)}</b></div>
+    </div>
+    <div class="hint">Крит — против небронированной цели. «В симуляции» — ${BAL_NOTE.toLowerCase()}.</div>`;
+  lastFocus = document.activeElement;
+  document.getElementById('overlay').classList.add('open');
+  m.querySelector('.close').onclick = closeModal;
+  m.querySelector('.close').focus();
+}
+function closeModal() {
+  document.getElementById('overlay').classList.remove('open');
+  if (lastFocus) lastFocus.focus();
+}
+document.getElementById('overlay').onclick = e => { if (e.target.id === 'overlay') closeModal(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+const sortSel = document.getElementById('sortSel');
+sortSel.value = order;
+sortSel.onchange = () => { order = sortSel.value; try { localStorage.setItem('atlas.order', order); } catch (e) { /* ignore */ } renderGrid(); };
+document.getElementById('balNote').textContent = 'Сила в симуляции: ' + BAL_NOTE;
+
+renderFilters();
+renderGrid();
+</script>
+</body>
+</html>
