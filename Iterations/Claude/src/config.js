@@ -48,6 +48,7 @@ const SETTING_DEFS = [
   { g: 'Энергия и эволюция', key: 'mutationMult', label: 'Сила мутаций ×', type: 'range', min: 0, max: 4, step: 0.1, def: 1 },
   { g: 'Энергия и эволюция', key: 'meatYield', label: 'Выход мяса ×', type: 'range', min: 0, max: 3, step: 0.1, def: 1 },
   { g: 'Энергия и эволюция', key: 'maxCells', label: 'Лимит клеток', type: 'range', min: 50, max: 4000, step: 50, def: 1500 },
+  { g: 'Энергия и эволюция', key: 'autoRespawn', label: 'Возрождать, если все вымерли', type: 'bool', def: false },
   { g: 'Энергия и эволюция', key: 'plantNerf', label: 'Трава глушит реген', type: 'bool', def: true },
 
   { g: 'ИИ и физика', key: 'sight', label: 'Дальность зрения', type: 'range', min: 100, max: 900, step: 10, def: 350 },

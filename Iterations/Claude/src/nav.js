@@ -134,6 +134,9 @@ function detourCandidates(o, sx, sy, R) {
   return _cand;
 }
 
+let routeFailed = false;       // последний planRoute не нашёл обхода: цель, вероятно, недостижима
+let _prevWx = NaN, _prevWy = NaN;   // прошлый первый поворот клетки — для гистерезиса (без метаний влево-вправо)
+
 function buildRoute(sx, sy, tx, ty, clear, out, depth) {
   const o = depth > 0 ? firstBlocker(sx, sy, tx, ty, clear) : null;
   if (!o) { out.push(tx, ty); return; }
@@ -148,21 +151,39 @@ function buildRoute(sx, sy, tx, ty, clear, out, depth) {
     if (!inBounds(wx, wy, 6) || insideObstacle(wx, wy, clear * 0.8)) continue;
     // первый отрезок не должен упираться в это же препятствие
     if (segSegDist(sx, sy, wx, wy, o.x1, o.y1, o.x2, o.y2) < thr) continue;
-    const cost = Math.hypot(wx - sx, wy - sy) + Math.hypot(tx - wx, ty - wy);
+    let cost = Math.hypot(wx - sx, wy - sy) + Math.hypot(tx - wx, ty - wy);
+    // уже выбранный обход сохраняем, пока он остаётся допустимым
+    if (depth === 3 && Math.abs(wx - _prevWx) + Math.abs(wy - _prevWy) < 90) cost *= 0.75;
     if (cost < bestCost) { bestCost = cost; bx = wx; by = wy; }
   }
-  if (bestCost === Infinity) { out.push(tx, ty); return; }   // тупик — едем прямо, спасёт локальное отталкивание
+  if (bestCost === Infinity) { routeFailed = true; out.push(tx, ty); return; }   // тупик — едем прямо, скользя вдоль препятствия
   out.push(bx, by);
   buildRoute(bx, by, tx, ty, clear, out, depth - 1);
 }
 
 function planRoute(c, tx, ty) {
   const r = c.route;
+  const hadWp = r.length > 2;
+  _prevWx = hadWp ? r[0] : NaN; _prevWy = hadWp ? r[1] : NaN;
   r.length = 0;
-  if (obst.length === 0) { r.push(tx, ty); return; }
+  routeFailed = false;
+  if (obst.length === 0) { r.push(tx, ty); c.routeFailed = false; return; }
   // трусливые обходят препятствия дальше
   const clear = c.radius + 4 + (1 - c.courage / 255) * 14;
   buildRoute(c.x, c.y, tx, ty, clear, r, 3);
+  c.routeFailed = routeFailed;
+}
+
+// Есть ли препятствие между двумя точками (удар «сквозь стену» невозможен)
+const _lb = [];
+function losBlocked(x1, y1, x2, y2) {
+  if (obst.length === 0) return false;
+  const list = obstInBox(Math.min(x1, x2) - 2, Math.min(y1, y2) - 2, Math.max(x1, x2) + 2, Math.max(y1, y2) + 2, _lb);
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    if (segSegDist(x1, y1, x2, y2, o.x1, o.y1, o.x2, o.y2) < o.r) return true;
+  }
+  return false;
 }
 
 // Короткий список препятствий поблизости (обновляется в think) — чтобы физика не перебирала все палки мира
@@ -179,29 +200,31 @@ function refreshNearObstacles(c) {
 }
 const _nb = [];
 
-// Локальное отталкивание от препятствий и границ мира (страховка, если маршрут не помог)
-function localAvoid(c, out) {
-  let rx = 0, ry = 0;
-  const pad = c.radius + 10, list = c.nobst;
+// Скольжение вдоль препятствий и границ: составляющая желаемого движения «в стену» убирается,
+// остаётся движение вдоль неё. Это убирает дрожание и кружение у стен, когда цель по ту сторону.
+// d — направление {x,y}, меняется на месте. Возвращает true, если клетка чем-то зажата.
+function steerAround(c, d) {
+  const pad = c.radius + 6, list = c.nobst;
+  let pinned = false;
+  const slide = (nx, ny, dd, lim) => {           // n — нормаль от препятствия к клетке
+    const dot = d.x * nx + d.y * ny;
+    if (dot < 0) { d.x -= dot * nx; d.y -= dot * ny; pinned = true; }
+    if (dd < lim * 0.85) { const k = (1 - dd / (lim * 0.85)) * 0.8; d.x += nx * k; d.y += ny * k; }
+  };
   for (let i = 0; i < list.length; i++) {
-    const o = list[i];
-    const lim = o.r + pad;
+    const o = list[i], lim = o.r + pad;
     if (c.x < Math.min(o.x1, o.x2) - lim || c.x > Math.max(o.x1, o.x2) + lim ||
         c.y < Math.min(o.y1, o.y2) - lim || c.y > Math.max(o.y1, o.y2) + lim) continue;
-    // ближайшая точка на капсуле
     const sx = o.x2 - o.x1, sy = o.y2 - o.y1, l2 = sx * sx + sy * sy;
     let u = l2 > 0 ? ((c.x - o.x1) * sx + (c.y - o.y1) * sy) / l2 : 0;
     u = u < 0 ? 0 : u > 1 ? 1 : u;
-    const nx = c.x - (o.x1 + sx * u), ny = c.y - (o.y1 + sy * u);
-    const d = Math.hypot(nx, ny);
-    if (d < lim && d > 0.01) { const k = (1 - d / lim) * 2.5; rx += nx / d * k; ry += ny / d * k; }
+    const nx = c.x - (o.x1 + sx * u), ny = c.y - (o.y1 + sy * u), dd = Math.hypot(nx, ny);
+    if (dd < lim && dd > 0.01) slide(nx / dd, ny / dd, dd, lim);
   }
-  const bm = 30;
-  if (c.x < bm) rx += (1 - c.x / bm) * 2;
-  if (c.x > world.w - bm) rx -= (1 - (world.w - c.x) / bm) * 2;
-  if (c.y < bm) ry += (1 - c.y / bm) * 2;
-  if (c.y > world.h - bm) ry -= (1 - (world.h - c.y) / bm) * 2;
-  out.x = rx; out.y = ry;
+  const bm = c.radius + 8;
+  if (c.x < bm) slide(1, 0, c.x, bm); if (c.x > world.w - bm) slide(-1, 0, world.w - c.x, bm);
+  if (c.y < bm) slide(0, 1, c.y, bm); if (c.y > world.h - bm) slide(0, -1, world.h - c.y, bm);
+  return pinned;
 }
 
 // Куда лучше всего «выталкивать» цель ударами: к ближайшей стене/границе (для синих-танков)
