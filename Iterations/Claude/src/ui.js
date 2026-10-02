@@ -46,6 +46,18 @@ Life.on('death', (c, cause) => { if (cause === 'kill') console.log('#' + c.id + 
 function buildSettings() {
   const body = $('settingsBody');
   body.innerHTML = '';
+  // выбор стартовой карты
+  const map = document.createElement('div');
+  map.className = 'genbox';
+  map.innerHTML = `<div class="gtitle">🗺 Стартовая карта</div>
+    <div class="btnrow"><select id="mapSelect" style="flex:1">${SCENARIOS.map(sc => `<option value="${sc.id}">${sc.name}</option>`).join('')}</select>
+    <button id="mapStart">▶ Начать</button></div><div id="mapDesc" style="opacity:.75;line-height:1.35"></div>`;
+  body.appendChild(map);
+  const sel = map.querySelector('#mapSelect'), desc = map.querySelector('#mapDesc');
+  sel.value = currentScenario;
+  const showDesc = () => { desc.textContent = getScenario(sel.value).desc; };
+  sel.onchange = showDesc; showDesc();
+  map.querySelector('#mapStart').onclick = () => { startScenario(sel.value); fitCamera(); buildSettings(); saveSettings(); };
   const groups = {};
   const getGroup = name => {
     if (groups[name]) return groups[name];
@@ -112,6 +124,7 @@ function buildSettings() {
     if (arch.value === '') return;
     const i = +arch.value, lv = [Math.floor(i / 9), Math.floor(i / 3) % 3, i % 3];
     lv.forEach((l, k) => { S.spawnGenome[k] = LV[l]; sliders[k][0].value = LV[l]; sliders[k][1].textContent = LV[l]; });
+    ARCH_NUCLEUS[ARCH_NAMES[i]].forEach((v, k) => { S.spawnGenome[3 + k] = v; sliders[3 + k][0].value = v; sliders[3 + k][1].textContent = v; });
     S.spawnMode = 'exact';
     const m = body.querySelector('select[data-key="spawnMode"]'); if (m) m.value = 'exact';
     saveSettings();
@@ -201,6 +214,7 @@ const keys = new Set();
 function canvasPos(e) { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
 
 canvas.addEventListener('pointerdown', e => {
+  if (wallpaper) return;
   canvas.setPointerCapture(e.pointerId);
   const [sx, sy] = canvasPos(e);
   ptrs.set(e.pointerId, { sx, sy, x: sx, y: sy, camX: cam.x, camY: cam.y, touch: e.pointerType === 'touch' });
@@ -221,6 +235,7 @@ canvas.addEventListener('pointerdown', e => {
 });
 
 canvas.addEventListener('pointermove', e => {
+  if (wallpaper) return;
   const [sx, sy] = canvasPos(e);
   input.mx = sx; input.my = sy; input.over = true;
   const p = ptrs.get(e.pointerId);
@@ -270,7 +285,8 @@ window.addEventListener('keydown', e => {
   if (k === ' ') { e.preventDefault(); space = true; togglePause(); }
   else if (k === '.') stepOnce();
   else if (k === 'f') fitCamera();
-  else if (k === 'escape') { closePanels(); closeSummary(); }
+  else if (k === 'h') toggleWallpaper();
+  else if (k === 'escape') { if (wallpaper) toggleWallpaper(); closePanels(); closeSummary(); }
   else if (k >= '1' && k <= '5') setTool(Object.keys(TOOLS)[+k - 1]);
   else if (k === '+' || k === '=') zoomAt(vw / 2, vh / 2, 1.15);
   else if (k === '-') zoomAt(vw / 2, vh / 2, 1 / 1.15);
@@ -292,6 +308,27 @@ function togglePause() { paused = !paused; $('btnPlay').textContent = paused ? '
 $('btnPlay').onclick = togglePause;
 $('btnStep').onclick = () => { if (!paused) togglePause(); stepOnce(); };
 $('btnFit').onclick = fitCamera;
+
+// ---------- режим обоев: только клетки, на весь экран, вымершие возрождаются ----------
+let wallpaper = false, wallpaperPrevRespawn = false;
+function toggleWallpaper() {
+  wallpaper = !wallpaper;
+  document.body.classList.toggle('wallpaper', wallpaper);
+  closePanels(); closeSummary();
+  if (wallpaper) {
+    wallpaperPrevRespawn = S.autoRespawn; S.autoRespawn = true;
+    input.over = false; input.hovered = null;
+    if (paused) togglePause();
+    try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {}); } catch (e) { /* ignore */ }
+  } else {
+    S.autoRespawn = wallpaperPrevRespawn;
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) { /* ignore */ }
+  }
+  requestAnimationFrame(() => { resizeCanvas(); fitCamera(); });
+}
+$('btnWallpaper').onclick = toggleWallpaper;
+canvas.addEventListener('dblclick', () => { if (wallpaper) toggleWallpaper(); });
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && wallpaper) toggleWallpaper(); setTimeout(resizeCanvas, 50); });
 
 const speed = $('speedSlider');
 speed.oninput = () => { timeScale = parseFloat(speed.value); $('speedVal').textContent = timeScale.toFixed(1) + '×'; };
@@ -442,7 +479,7 @@ function frame(now) {
   handleKeys(dt);
   advance(dt);
 
-  input.hovered = input.over ? pickCell(...screenToWorld(input.mx, input.my)) : null;
+  input.hovered = input.over && !wallpaper ? pickCell(...screenToWorld(input.mx, input.my)) : null;
   render(now);
   updateHoverPanel(now);
 

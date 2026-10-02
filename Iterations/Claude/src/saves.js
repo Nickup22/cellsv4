@@ -10,7 +10,7 @@ const r1 = v => Math.round(v * 10) / 10;
 function serializeWorld() {
   return {
     v: SAVE_VERSION, ver: VERSION, savedAt: Date.now(),
-    t: simTime, nextId, world: { w: world.w, h: world.h },
+    t: simTime, nextId, world: { w: world.w, h: world.h }, scenario: currentScenario,
     S: JSON.parse(JSON.stringify(S)), stats: { ...stats },
     cam: { x: cam.x, y: cam.y, zoom: cam.zoom },
     cells: cells.map(c => [
@@ -40,6 +40,7 @@ function loadWorld(d) {
   world.w = d.world.w; world.h = d.world.h;
   cellGrid.resize(world.w, world.h); plantGrid.resize(world.w, world.h); meatGrid.resize(world.w, world.h);
   simTime = d.t; nextId = d.nextId;
+  if (d.scenario) currentScenario = getScenario(d.scenario).id;
   Object.assign(stats, d.stats);
 
   const byId = new Map();

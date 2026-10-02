@@ -53,13 +53,13 @@ function attack(c, t, dx, dy, d) {
   c.lastHitAt = simTime;
 
   const pen = c.strength / 255, def = t.armor / 255;
-  let dmg = c.attackDamage * S.dmgMult * (1 - def * 0.5);
-  let crit = Math.random() < S.critChance * (1 + pen) * (1 - def * 0.7);
+  let dmg = c.attackDamage * S.dmgMult * (1 - def * 0.55);
+  let crit = Math.random() < S.critChance * (1 + pen * 0.6) * (1 - def * 0.7);
   if (def > 0.9 && pen < 0.3) { crit = false; dmg *= 0.3; }   // FULL BLOCK
 
   let knock = 1;
   if (crit) {
-    dmg *= 2.5; knock = 2;
+    dmg *= 2.2; knock = 2;
     if (S.hardDmg) t.hardHp = Math.min(t.maxHp * S.hardMax, t.hardHp + dmg * 0.28);
     spawnParticles(t.x, t.y, 14, '#ff2222', 0.7, 75, 2.6);
   } else {
@@ -91,21 +91,22 @@ function economy(c, dt) {
 
   // Реген: в бою сильно подавлен, но не выключен; после боя разгоняется тем быстрее, чем зеленее клетка
   const delay = 0.5 + 4.5 * (1 - c.regen / 255);
-  const rf = c.combatTimer < 2 ? 0.15 : Math.min(1, 0.15 + 0.85 * (c.combatTimer - 2) / delay);
+  const inFight = 0.15 + 0.25 * c.regen / 255;   // зелёные и в бою хоть как-то затягивают раны
+  const rf = c.combatTimer < 2 ? inFight : Math.min(1, inFight + (1 - inFight) * (c.combatTimer - 2) / delay);
   let plantMult = 1;
   if (S.plantNerf && c.regen > 100) {
     const pr = c.plantEaten / (c.meatEaten + c.plantEaten + 0.01);
-    if (pr > 0.5) plantMult = Math.max(0.12, 1 - (pr - 0.5) * 2 * (c.regen / 255) * 1.4);
+    if (pr > 0.5) plantMult = Math.max(0.3, 1 - (pr - 0.5) * 2 * (c.regen / 255));
   }
   const cap = c.maxHp - c.hardHp;
   if (c.hp > cap) c.hp = cap;
   if (c.hp < cap && c.regenRate > 0) {
-    const rate = c.regenRate * rf * plantMult, cost = rate * 0.9 * dt;
+    const rate = c.regenRate * rf * plantMult, cost = rate * 0.55 * dt;
     if (c.energy > cost) { c.hp = Math.min(cap, c.hp + rate * dt); c.energy -= cost; }
   }
   // Хард-урон лечится очень медленно, в разы дороже и только в покое
   if (c.hardHp > 0 && c.combatTimer > delay + 2) {
-    const rate = c.regenRate * 0.08, cost = rate * dt * 0.9 * S.hardHealCost;
+    const rate = c.regenRate * 0.08, cost = rate * dt * 0.55 * S.hardHealCost;
     if (rate > 0 && c.energy > cost * 3) {
       c.hardHp -= Math.min(rate * dt, c.hardHp);
       c.energy -= cost;
@@ -116,7 +117,9 @@ function economy(c, dt) {
   if (c.energy < c.maxEnergy * 0.97) {
     const m = meatGrid.nearest(c.x, c.y, c.radius + 8);
     if (m && Math.hypot(m.x - c.x, m.y - c.y) < c.radius + m.radius + 2) {
-      c.energy = Math.min(c.maxEnergy, c.energy + m.energy);
+      // регенераторам нужна кровь: мясо им даёт больше энергии
+      const gain = m.energy * (1 + 0.6 * c.regen / 255);
+      c.energy = Math.min(c.maxEnergy, c.energy + gain);
       c.meatEaten += m.energy; m.alive = false; c.memX = m.x; c.memY = m.y; c.memAt = simTime;
       spawnParticles(m.x, m.y, 4, '#ff6644', 0.4, 20);
     }
@@ -216,26 +219,8 @@ function spawnFromSources(dt) {
   }
 }
 
-function spawnInitial() {
-  resetWorldState();
-  const cx = world.w / 2, cy = world.h / 2;
-  for (let i = 0; i < S.initCells; i++) {
-    const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * S.initRadius;
-    spawnCell(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-  }
-  stats.spawned = 0;
-  for (let i = 0; i < S.initPlants; i++) {
-    const pos = findFreePos(20 + Math.random() * (world.w - 40), 20 + Math.random() * (world.h - 40), 5);
-    if (pos.ok) plants.push(createPlant(pos.x, pos.y));
-  }
-  for (let i = 0; i < S.initSources; i++) {
-    const pos = findFreePos(40 + Math.random() * (world.w - 80), 40 + Math.random() * (world.h - 80), 30);
-    if (pos.ok) sources.push(createSource(pos.x, pos.y));
-  }
-  obstDirty = true;
-  particles.length = 0;
-  sampleStats(true);
-}
+// Перезапуск мира = старт текущей карты (см. scenarios.js)
+function spawnInitial() { startScenario(currentScenario); }
 
 // ---------- стаи и вожаки ----------
 // Нет кода, управляющего стаями: вожак — просто клетка, за которой (прямо или через цепочку) едут другие.

@@ -32,6 +32,10 @@ button.active { background: #454552; border-color: #99a; color: #fff; }
   background: rgba(20,20,24,0.9); padding: 4px 14px; border-radius: 12px; font-size: 12px; border: 1px solid #444; max-width: 94vw;
 }
 
+/* режим обоев */
+body.wallpaper #topbar, body.wallpaper #toolIndicator, body.wallpaper .panel, body.wallpaper #hoverPanel { display: none !important; }
+body.wallpaper canvas#canvas { top: 0; height: 100vh; cursor: none; }
+
 /* hover */
 #hoverPanel {
   position: fixed; pointer-events: none; z-index: 200; display: none; width: 270px;
@@ -107,6 +111,7 @@ textarea { width: 100%; font-family: monospace; font-size: 11px; }
   <button id="btnErase" title="5">🗑 Ластик</button>
   <div class="sep"></div>
   <button id="btnFit" title="Показать весь мир (F)">⌖</button>
+  <button id="btnWallpaper" title="Режим обоев: без интерфейса, на весь экран (H, выход — H / Esc / двойной клик)">🖼</button>
   <button id="btnSettings" title="Настройки">⚙ Настройки</button>
   <button id="btnStats" title="Статистика">📊</button>
   <button id="btnSaves" title="Сохранить / загрузить мир">💾 Сейвы</button>
@@ -178,6 +183,22 @@ const ARCH_NAMES = [
   'Кусака', 'Охотник', 'Вампир', 'Воин', 'Солдат', 'Паразит', 'Страж', 'Хранитель', 'Феникс',
   'Шершень', 'Хищник', 'Чума', 'Берсерк', 'Командир', 'Вирус', 'Колосс', 'Левиафан', 'Абсолют',
 ];
+
+// «Родное» ядро архетипа — характер, подходящий телу:
+//  красные смелые одиночки, синие — стайные защитники, зелёные — прожорливые и не боятся ран;
+//  слабые и беззащитные (Личинка, Слизень) — трусливы, держатся стаей и плодятся быстро (низкая прожорливость).
+const ARCH_NUCLEUS = {
+  'Личинка': [30, 220, 110], 'Слизень': [45, 200, 80], 'Пожиратель': [130, 120, 170],
+  'Чешуйка': [50, 210, 70], 'Стойкий': [70, 200, 90], 'Мицелий': [90, 190, 140],
+  'Танк': [110, 230, 70], 'Бастион': [120, 220, 100], 'Монолит': [140, 200, 150],
+  'Кусака': [140, 150, 110], 'Охотник': [180, 110, 150], 'Вампир': [200, 80, 200],
+  'Воин': [170, 170, 110], 'Солдат': [150, 210, 130], 'Паразит': [170, 140, 150],
+  'Страж': [160, 230, 100], 'Хранитель': [140, 235, 140], 'Феникс': [190, 180, 150],
+  'Шершень': [235, 40, 110], 'Хищник': [225, 60, 160], 'Чума': [235, 50, 170],
+  'Берсерк': [245, 70, 130], 'Командир': [210, 200, 140], 'Вирус': [225, 90, 160],
+  'Колосс': [220, 120, 120], 'Левиафан': [230, 130, 160], 'Абсолют': [240, 150, 160],
+};
+function archNucleus(i) { const n = ARCH_NUCLEUS[ARCH_NAMES[i]]; return { c: n[0], s: n[1], g: n[2] }; }
 
 const SETTING_DEFS = [
   // group, key, label, type, min, max, step, def, restart(↻ — применится при перезапуске мира)
@@ -407,9 +428,9 @@ function recordGeneration(gen, genome) {
 function createCell(x, y, genome, parent, fixedId) {
   const g = (genome || randomGenome()).slice();
   const strength = g[0], armor = g[1], regen = g[2];
-  const mass = 1 + armor / 255 * 1.8;
+  const mass = 1 + armor / 255 * 1.4 + strength / 255 * 0.35;   // броня — основной вес, но и мышцы весят
   const maxHp = 90 + armor * 0.6;
-  const maxEnergy = 140 + strength * 0.4;
+  const maxEnergy = 170 + regen * 0.1;          // запас энергии почти одинаковый: сила больше не даёт «бесплатный» бак
   const gen = parent ? parent.gen + 1 : 0;
 
   const c = {
@@ -425,12 +446,13 @@ function createCell(x, y, genome, parent, fixedId) {
     // физиология
     mass, maxHp, hp: maxHp, hardHp: 0,
     maxEnergy, energy: maxEnergy * 0.7,
-    speed: (300 - armor * 0.5) / mass,
-    attackDamage: 6 + strength / 255 * 40,
+    speed: (300 - armor * 0.45) / mass,
+    attackDamage: 6 + strength / 255 * 36,
     attackCooldown: 0.25 + strength / 255 * 1.4,
-    knockback: 60 + strength * 0.15,
+    knockback: 40 + strength * 0.12,
     regenRate: regen / 255 * 38,
-    baseUpkeep: 1.2 + regen / 255 * 1.5 + (regen > 150 ? 0.5 : 0),
+    // у каждой статы своя цена: мышцы, мембрана и регенерация — всё ест энергию (реген — больше всех)
+    baseUpkeep: 1.0 + strength / 255 * 0.9 + armor / 255 * 0.3 + regen / 255 * 0.8,
     // состояние
     alive: true, age: 0, gen,
     parent: parent ? parent.id : null,
@@ -824,6 +846,21 @@ function retaliationTarget(c) {
   return a && a.alive && simTime - c.lastAttackedAt < 2.5 ? a : null;
 }
 
+// ---------- оценка схватки ----------
+// Клетка знает свои статы и видит чужой цвет: прикидывает, кто кого убьёт быстрее (с бронёй, критами и регеном в бою)
+function dps(a, b) {
+  const def = b.armor / 255, pen = a.strength / 255;
+  const crit = S.critChance * (1 + pen * 0.6) * (1 - def * 0.7);
+  return a.attackDamage * S.dmgMult * (1 - def * 0.55) * (1 + crit * 1.2) / a.attackCooldown;
+}
+function fightRegen(c) { return c.regenRate * (0.15 + 0.25 * c.regen / 255); }
+// > 1 — я, скорее всего, побеждаю; < 1 — проигрываю
+function fightOdds(c, o) {
+  const iKillIn = o.hp / Math.max(0.5, dps(c, o) - fightRegen(o));
+  const heKillsIn = c.hp / Math.max(0.5, dps(o, c) - fightRegen(c));
+  return heKillsIn / iKillIn;
+}
+
 // Оценка добычи: чем меньше, тем привлекательнее
 function preyScore(c, o, d) {
   let s = d * (1 + o.armor / 255 * 0.8);
@@ -836,8 +873,8 @@ function pickPrey(c, desperate) {
   let best = null, bestS = Infinity;
   for (const o of c.near) {
     if (o === c.teammate || ignored(c, o)) continue;
-    // осторожные не лезут на заведомо более сильных
-    if (!desperate && o.strength - c.strength > 90 + c.courage * 0.6) continue;
+    // не лезет в заведомо проигрышный бой; смелые рискуют больше
+    if (!desperate && fightOdds(c, o) < lerp(1.4, 0.6, c.courage / 255)) continue;
     // свои (почти идентичный геном) — не добыча, если только не умираешь с голоду
     if (!desperate && genomeSimilarity(c.genome, o.genome) > 0.9) continue;
     const d = Math.hypot(o.x - c.x, o.y - c.y);
@@ -1000,7 +1037,12 @@ function think(c) {
   const isHungry = ef < hungryThr;
   const veryHungry = ef < 0.22;
   // Смелые отступают при бóльших потерях HP; регенераторов потери пугают меньше
-  const retreatThr = lerp(0.5, 0.1, c.courage / 255) * (1 - 0.35 * c.regen / 255);
+  let retreatThr = lerp(0.5, 0.1, c.courage / 255) * (1 - 0.35 * c.regen / 255);
+  // проигрывает схватку — отходит раньше (смелость частично глушит это)
+  if (threat) {
+    const odds = fightOdds(c, threat);
+    if (odds < 1) retreatThr = Math.min(0.85, retreatThr + (1 - odds) * 0.45 * (1 - c.courage / 255 * 0.6));
+  }
 
   // ── Связи с товарищем ──
   if (c.teammate && (!c.teammate.alive || dist(c, c.teammate) > sight * 1.6 || (veryHungry && Math.random() < 0.08)))
@@ -1309,13 +1351,13 @@ function attack(c, t, dx, dy, d) {
   c.lastHitAt = simTime;
 
   const pen = c.strength / 255, def = t.armor / 255;
-  let dmg = c.attackDamage * S.dmgMult * (1 - def * 0.5);
-  let crit = Math.random() < S.critChance * (1 + pen) * (1 - def * 0.7);
+  let dmg = c.attackDamage * S.dmgMult * (1 - def * 0.55);
+  let crit = Math.random() < S.critChance * (1 + pen * 0.6) * (1 - def * 0.7);
   if (def > 0.9 && pen < 0.3) { crit = false; dmg *= 0.3; }   // FULL BLOCK
 
   let knock = 1;
   if (crit) {
-    dmg *= 2.5; knock = 2;
+    dmg *= 2.2; knock = 2;
     if (S.hardDmg) t.hardHp = Math.min(t.maxHp * S.hardMax, t.hardHp + dmg * 0.28);
     spawnParticles(t.x, t.y, 14, '#ff2222', 0.7, 75, 2.6);
   } else {
@@ -1347,21 +1389,22 @@ function economy(c, dt) {
 
   // Реген: в бою сильно подавлен, но не выключен; после боя разгоняется тем быстрее, чем зеленее клетка
   const delay = 0.5 + 4.5 * (1 - c.regen / 255);
-  const rf = c.combatTimer < 2 ? 0.15 : Math.min(1, 0.15 + 0.85 * (c.combatTimer - 2) / delay);
+  const inFight = 0.15 + 0.25 * c.regen / 255;   // зелёные и в бою хоть как-то затягивают раны
+  const rf = c.combatTimer < 2 ? inFight : Math.min(1, inFight + (1 - inFight) * (c.combatTimer - 2) / delay);
   let plantMult = 1;
   if (S.plantNerf && c.regen > 100) {
     const pr = c.plantEaten / (c.meatEaten + c.plantEaten + 0.01);
-    if (pr > 0.5) plantMult = Math.max(0.12, 1 - (pr - 0.5) * 2 * (c.regen / 255) * 1.4);
+    if (pr > 0.5) plantMult = Math.max(0.3, 1 - (pr - 0.5) * 2 * (c.regen / 255));
   }
   const cap = c.maxHp - c.hardHp;
   if (c.hp > cap) c.hp = cap;
   if (c.hp < cap && c.regenRate > 0) {
-    const rate = c.regenRate * rf * plantMult, cost = rate * 0.9 * dt;
+    const rate = c.regenRate * rf * plantMult, cost = rate * 0.55 * dt;
     if (c.energy > cost) { c.hp = Math.min(cap, c.hp + rate * dt); c.energy -= cost; }
   }
   // Хард-урон лечится очень медленно, в разы дороже и только в покое
   if (c.hardHp > 0 && c.combatTimer > delay + 2) {
-    const rate = c.regenRate * 0.08, cost = rate * dt * 0.9 * S.hardHealCost;
+    const rate = c.regenRate * 0.08, cost = rate * dt * 0.55 * S.hardHealCost;
     if (rate > 0 && c.energy > cost * 3) {
       c.hardHp -= Math.min(rate * dt, c.hardHp);
       c.energy -= cost;
@@ -1372,7 +1415,9 @@ function economy(c, dt) {
   if (c.energy < c.maxEnergy * 0.97) {
     const m = meatGrid.nearest(c.x, c.y, c.radius + 8);
     if (m && Math.hypot(m.x - c.x, m.y - c.y) < c.radius + m.radius + 2) {
-      c.energy = Math.min(c.maxEnergy, c.energy + m.energy);
+      // регенераторам нужна кровь: мясо им даёт больше энергии
+      const gain = m.energy * (1 + 0.6 * c.regen / 255);
+      c.energy = Math.min(c.maxEnergy, c.energy + gain);
       c.meatEaten += m.energy; m.alive = false; c.memX = m.x; c.memY = m.y; c.memAt = simTime;
       spawnParticles(m.x, m.y, 4, '#ff6644', 0.4, 20);
     }
@@ -1472,26 +1517,8 @@ function spawnFromSources(dt) {
   }
 }
 
-function spawnInitial() {
-  resetWorldState();
-  const cx = world.w / 2, cy = world.h / 2;
-  for (let i = 0; i < S.initCells; i++) {
-    const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * S.initRadius;
-    spawnCell(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-  }
-  stats.spawned = 0;
-  for (let i = 0; i < S.initPlants; i++) {
-    const pos = findFreePos(20 + Math.random() * (world.w - 40), 20 + Math.random() * (world.h - 40), 5);
-    if (pos.ok) plants.push(createPlant(pos.x, pos.y));
-  }
-  for (let i = 0; i < S.initSources; i++) {
-    const pos = findFreePos(40 + Math.random() * (world.w - 80), 40 + Math.random() * (world.h - 80), 30);
-    if (pos.ok) sources.push(createSource(pos.x, pos.y));
-  }
-  obstDirty = true;
-  particles.length = 0;
-  sampleStats(true);
-}
+// Перезапуск мира = старт текущей карты (см. scenarios.js)
+function spawnInitial() { startScenario(currentScenario); }
 
 // ---------- стаи и вожаки ----------
 // Нет кода, управляющего стаями: вожак — просто клетка, за которой (прямо или через цепочку) едут другие.
@@ -1596,6 +1623,213 @@ function advance(frameDt) {
   if (acc >= FIXED_DT) acc = 0;
 }
 function stepOnce() { step(FIXED_DT); }
+
+// ───────── scenarios.js ─────────
+// ==================== SCENARIOS (стартовые карты) ====================
+// Каждая карта задаёт размер мира и экологию (поверх настроек игрока), стены, источники
+// и стартовые группы клеток определённых архетипов. Новая карта = новый объект в SCENARIOS.
+
+let currentScenario = 'random';
+
+// Ключи, которые карта может переопределить; перед стартом карты они сбрасываются к умолчаниям,
+// чтобы карта не наследовала условия предыдущей. «Случайный мир» их не трогает.
+const SCENARIO_KEYS = ['worldW', 'worldH', 'plantRate', 'plantEnergy', 'plantMax', 'sourceRate', 'sourceRadius', 'sourceFat'];
+
+// Геном архетипа из атласа: тело по уровням ±15, ядро — заданное или «родное» для архетипа (±20)
+function archGenome(name, nuc) {
+  const i = ARCH_NAMES.indexOf(name);
+  if (i < 0) throw new Error('Нет архетипа ' + name);
+  const jit = (v, a) => clamp(Math.round(v + (Math.random() - 0.5) * 2 * a), 0, 255);
+  const n = nuc || archNucleus(i);
+  const pick = v => (v == null ? Math.floor(Math.random() * 256) : jit(v, 20));
+  return [jit(LV[Math.floor(i / 9)], 15), jit(LV[Math.floor(i / 3) % 3], 15), jit(LV[i % 3], 15), pick(n.c), pick(n.s), pick(n.g)];
+}
+
+function scGroup(name, n, x, y, spread, nuc) {
+  for (let k = 0; k < n; k++) {
+    const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * spread;
+    spawnCell(x + Math.cos(a) * r, y + Math.sin(a) * r, archGenome(name, nuc));
+  }
+}
+function scWall(x1, y1, x2, y2) { walls.push({ x1, y1, x2, y2, r: 6 }); obstDirty = true; }
+function scSource(x, y) {
+  rebuildObstacles();
+  const p = findFreePos(x, y, 30);
+  if (p.ok) sources.push(createSource(p.x, p.y));
+}
+function scPlants(n) {
+  rebuildObstacles();
+  for (let i = 0; i < n; i++) {
+    const pos = findFreePos(20 + Math.random() * (world.w - 40), 20 + Math.random() * (world.h - 40), 5);
+    if (pos.ok) plants.push(createPlant(pos.x, pos.y));
+  }
+}
+function scRandomCells(n, x, y, r) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * r;
+    spawnCell(x + Math.cos(a) * d, y + Math.sin(a) * d, genomeForSpawn());
+  }
+}
+// Кольцо стен с проходами (оазис)
+function scRing(cx, cy, R, gaps) {
+  const seg = 12;
+  for (let i = 0; i < seg; i++) {
+    if (gaps.includes(i)) continue;
+    const a1 = i / seg * Math.PI * 2, a2 = (i + 1) / seg * Math.PI * 2;
+    scWall(cx + Math.cos(a1) * R, cy + Math.sin(a1) * R, cx + Math.cos(a2) * R, cy + Math.sin(a2) * R);
+  }
+}
+
+const HERBIVORE = { c: 40, s: 220, g: 80 };    // трусливые, стайные, плодовитые
+const PREDATOR = { c: 230, s: 40, g: 100 };    // смелые одиночки
+const CLAN = { c: 150, s: 230, g: 120 };       // боевые стайные
+
+const SCENARIOS = [
+  {
+    id: 'random', name: 'Случайный мир',
+    desc: 'Классика: случайные клетки в центре, растения по всей карте и источники. Использует твои настройки спавна.',
+    build() {
+      scRandomCells(S.initCells, world.w / 2, world.h / 2, S.initRadius);
+      scPlants(S.initPlants);
+      for (let i = 0; i < S.initSources; i++) scSource(40 + Math.random() * (world.w - 80), 40 + Math.random() * (world.h - 80));
+    },
+  },
+  {
+    id: 'arena', name: 'Арена 27 архетипов', set: { worldW: 2700, worldH: 1800 },
+    desc: 'Все 27 архетипов атласа по 6 клеток, каждый в своём углу сетки 9×3. Кто переживёт остальных?',
+    build() {
+      for (let i = 0; i < 27; i++) {
+        const gx = i % 9, gy = Math.floor(i / 9);
+        scGroup(ARCH_NAMES[i], 6, 150 + gx * 300, 300 + gy * 600, 50);
+      }
+      for (let i = 0; i < 8; i++) scSource(200 + (i % 4) * 760, 600 + Math.floor(i / 4) * 600);
+      scPlants(350);
+    },
+  },
+  {
+    id: 'kingdoms', name: 'Три царства', set: { worldW: 2400, worldH: 1800 },
+    desc: 'Красное, зелёное и синее царства в своих углах со своими источниками. Между ними — стены с проходами.',
+    build() {
+      const W = world.w, H = world.h, cx = W / 2, cy = H * 0.52;
+      // три перегородки от центра с проходом посередине
+      for (const a of [-Math.PI / 2, Math.PI / 6, Math.PI * 5 / 6]) {
+        const ex = cx + Math.cos(a) * 1100, ey = cy + Math.sin(a) * 1100;
+        scWall(cx + Math.cos(a) * 120, cy + Math.sin(a) * 120, cx + Math.cos(a) * 420, cy + Math.sin(a) * 420);
+        scWall(cx + Math.cos(a) * 560, cy + Math.sin(a) * 560, clamp(ex, 0, W), clamp(ey, 0, H));
+      }
+      scGroup('Шершень', 8, W * 0.2, H * 0.3, 90); scGroup('Хищник', 8, W * 0.2, H * 0.3, 90); scGroup('Кусака', 6, W * 0.2, H * 0.3, 90);
+      scGroup('Пожиратель', 8, W * 0.8, H * 0.3, 90); scGroup('Вампир', 6, W * 0.8, H * 0.3, 90);
+      scGroup('Мицелий', 6, W * 0.8, H * 0.3, 90); scGroup('Слизень', 4, W * 0.8, H * 0.3, 90);
+      scGroup('Танк', 6, W * 0.5, H * 0.85, 90); scGroup('Страж', 8, W * 0.5, H * 0.85, 90);
+      scGroup('Бастион', 6, W * 0.5, H * 0.85, 90); scGroup('Чешуйка', 4, W * 0.5, H * 0.85, 90);
+      scSource(W * 0.1, H * 0.15); scSource(W * 0.3, H * 0.45);
+      scSource(W * 0.9, H * 0.15); scSource(W * 0.7, H * 0.45);
+      scSource(W * 0.35, H * 0.9); scSource(W * 0.65, H * 0.9);
+      scPlants(300);
+    },
+  },
+  {
+    id: 'herd', name: 'Стадо и хищники', set: { worldW: 2200, worldH: 1600, plantRate: 6 },
+    desc: 'Большое трусливое стадо травоядных (стайные, слабые) и горстка смелых хищников-одиночек. Много травы.',
+    build() {
+      const W = world.w, H = world.h;
+      scGroup('Слизень', 20, W * 0.5, H * 0.5, 260, HERBIVORE);
+      scGroup('Стойкий', 15, W * 0.5, H * 0.5, 260, HERBIVORE);
+      scGroup('Чешуйка', 15, W * 0.5, H * 0.5, 260, HERBIVORE);
+      scGroup('Хищник', 4, W * 0.12, H * 0.15, 60, PREDATOR);
+      scGroup('Шершень', 3, W * 0.88, H * 0.85, 60, PREDATOR);
+      for (let i = 0; i < 4; i++) scSource(W * (0.25 + 0.5 * (i % 2)), H * (0.25 + 0.5 * Math.floor(i / 2)));
+      scPlants(500);
+    },
+  },
+  {
+    id: 'oases', name: 'Оазисы', set: { worldW: 2400, worldH: 1800, plantRate: 0.4, sourceRate: 2, sourceRadius: 90 },
+    desc: 'Пустыня: трава почти не растёт. Еда — только в пяти оазисах за кольцевыми стенами с узкими проходами.',
+    build() {
+      const W = world.w, H = world.h;
+      const pts = [[0.2, 0.25], [0.8, 0.25], [0.5, 0.5], [0.2, 0.78], [0.8, 0.78]];
+      for (const [px, py] of pts) {
+        const gap = Math.floor(Math.random() * 12);
+        scRing(W * px, H * py, 190, [gap, (gap + 6) % 12]);
+        scSource(W * px, H * py);
+      }
+      scRandomCells(60, W / 2, H / 2, 700);
+      scPlants(120);
+    },
+  },
+  {
+    id: 'maze', name: 'Лабиринт', set: { worldW: 2000, worldH: 1500 },
+    desc: 'Сетка комнат 250×250 со случайными проходами. Проверка навигации: еда за стенами, путь не прямой.',
+    build() {
+      const W = world.w, H = world.h, C = 250;
+      for (let x = C; x < W; x += C) for (let y = 0; y < H; y += C) {
+        if (Math.random() < 0.35) continue;
+        const gap = 60 + Math.random() * 60;
+        scWall(x, y, x, y + (C - gap) / 2); scWall(x, y + (C + gap) / 2, x, Math.min(H, y + C));
+      }
+      for (let y = C; y < H; y += C) for (let x = 0; x < W; x += C) {
+        if (Math.random() < 0.35) continue;
+        const gap = 60 + Math.random() * 60;
+        scWall(x, y, x + (C - gap) / 2, y); scWall(x + (C + gap) / 2, y, Math.min(W, x + C), y);
+      }
+      for (let i = 0; i < 6; i++) scSource(C / 2 + Math.floor(Math.random() * (W / C)) * C, C / 2 + Math.floor(Math.random() * (H / C)) * C);
+      scRandomCells(50, W / 2, H / 2, 600);
+      scPlants(250);
+    },
+  },
+  {
+    id: 'famine', name: 'Голодные времена', set: { plantRate: 3.5, plantEnergy: 24 },
+    desc: 'Мало травы, она тощая, источников нет. Много клеток — выживут те, кто умеет экономить или охотиться.',
+    build() {
+      scRandomCells(80, world.w / 2, world.h / 2, 600);
+      scPlants(150);
+    },
+  },
+  {
+    id: 'redgreen', name: 'Красные против зелёных', set: { worldW: 2400, worldH: 1300 },
+    desc: 'Две половины мира, стена с двумя проходами. Слева сила (Шершень, Хищник, Кусака), справа реген (Пожиратель, Вампир, Мицелий).',
+    build() {
+      const W = world.w, H = world.h;
+      scWall(W / 2, 0, W / 2, H * 0.25); scWall(W / 2, H * 0.38, W / 2, H * 0.62); scWall(W / 2, H * 0.75, W / 2, H);
+      scGroup('Шершень', 9, W * 0.22, H * 0.5, 160); scGroup('Хищник', 9, W * 0.22, H * 0.5, 160); scGroup('Кусака', 7, W * 0.22, H * 0.5, 160);
+      scGroup('Пожиратель', 9, W * 0.78, H * 0.5, 160); scGroup('Вампир', 9, W * 0.78, H * 0.5, 160); scGroup('Мицелий', 7, W * 0.78, H * 0.5, 160);
+      for (const px of [0.15, 0.85]) { scSource(W * px, H * 0.25); scSource(W * px, H * 0.75); scSource(W * (px < 0.5 ? 0.35 : 0.65), H * 0.5); }
+      scPlants(250);
+    },
+  },
+  {
+    id: 'packs', name: 'Войны стай', set: { worldW: 2400, worldH: 1800 },
+    desc: 'Пять кланов-клонов со стайным ядром (Охотник, Солдат, Страж, Вампир, Хранитель) вокруг богатого центра.',
+    build() {
+      const W = world.w, H = world.h, names = ['Охотник', 'Солдат', 'Страж', 'Вампир', 'Хранитель'];
+      names.forEach((n, i) => {
+        const a = i / names.length * Math.PI * 2 - Math.PI / 2;
+        scGroup(n, 10, W / 2 + Math.cos(a) * 650, H / 2 + Math.sin(a) * 650, 70, CLAN);
+        scSource(W / 2 + Math.cos(a) * 820, H / 2 + Math.sin(a) * 820);
+      });
+      scSource(W / 2 - 80, H / 2); scSource(W / 2 + 80, H / 2);
+      scPlants(300);
+    },
+  },
+];
+
+function getScenario(id) { return SCENARIOS.find(s => s.id === id) || SCENARIOS[0]; }
+
+function startScenario(id) {
+  const sc = getScenario(id);
+  currentScenario = sc.id;
+  if (sc.set) {
+    for (const k of SCENARIO_KEYS) { const d = SETTING_DEFS.find(x => x.key === k); if (d) S[k] = d.def; }
+    Object.assign(S, sc.set);
+  }
+  resetWorldState();
+  sc.build();
+  stats.spawned = 0;
+  obstDirty = true;
+  particles.length = 0;
+  computePacks();
+  sampleStats(true);
+}
 
 // ───────── stats.js ─────────
 // ==================== STATISTICS ====================
@@ -1797,7 +2031,7 @@ const r1 = v => Math.round(v * 10) / 10;
 function serializeWorld() {
   return {
     v: SAVE_VERSION, ver: VERSION, savedAt: Date.now(),
-    t: simTime, nextId, world: { w: world.w, h: world.h },
+    t: simTime, nextId, world: { w: world.w, h: world.h }, scenario: currentScenario,
     S: JSON.parse(JSON.stringify(S)), stats: { ...stats },
     cam: { x: cam.x, y: cam.y, zoom: cam.zoom },
     cells: cells.map(c => [
@@ -1827,6 +2061,7 @@ function loadWorld(d) {
   world.w = d.world.w; world.h = d.world.h;
   cellGrid.resize(world.w, world.h); plantGrid.resize(world.w, world.h); meatGrid.resize(world.w, world.h);
   simTime = d.t; nextId = d.nextId;
+  if (d.scenario) currentScenario = getScenario(d.scenario).id;
   Object.assign(stats, d.stats);
 
   const byId = new Map();
@@ -2236,7 +2471,7 @@ function updateHoverPanel(now) {
 
 function hoverHtml(c) {
   const def = c.armor / 255, pen = c.strength / 255;
-  const crit = S.critChance * (1 + pen) * (1 - def * 0.7) * 100;
+  const crit = S.critChance * (1 + pen * 0.6) * (1 - def * 0.7) * 100;
   const upkeep = c.baseUpkeep * S.hungerMult;
   const tEmpty = upkeep > 0 ? c.energy / upkeep : Infinity;
   const tDeath = S.starveDmg > 0 ? tEmpty + c.hp / S.starveDmg : Infinity;
@@ -2333,6 +2568,18 @@ Life.on('death', (c, cause) => { if (cause === 'kill') console.log('#' + c.id + 
 function buildSettings() {
   const body = $('settingsBody');
   body.innerHTML = '';
+  // выбор стартовой карты
+  const map = document.createElement('div');
+  map.className = 'genbox';
+  map.innerHTML = `<div class="gtitle">🗺 Стартовая карта</div>
+    <div class="btnrow"><select id="mapSelect" style="flex:1">${SCENARIOS.map(sc => `<option value="${sc.id}">${sc.name}</option>`).join('')}</select>
+    <button id="mapStart">▶ Начать</button></div><div id="mapDesc" style="opacity:.75;line-height:1.35"></div>`;
+  body.appendChild(map);
+  const sel = map.querySelector('#mapSelect'), desc = map.querySelector('#mapDesc');
+  sel.value = currentScenario;
+  const showDesc = () => { desc.textContent = getScenario(sel.value).desc; };
+  sel.onchange = showDesc; showDesc();
+  map.querySelector('#mapStart').onclick = () => { startScenario(sel.value); fitCamera(); buildSettings(); saveSettings(); };
   const groups = {};
   const getGroup = name => {
     if (groups[name]) return groups[name];
@@ -2399,6 +2646,7 @@ function buildSettings() {
     if (arch.value === '') return;
     const i = +arch.value, lv = [Math.floor(i / 9), Math.floor(i / 3) % 3, i % 3];
     lv.forEach((l, k) => { S.spawnGenome[k] = LV[l]; sliders[k][0].value = LV[l]; sliders[k][1].textContent = LV[l]; });
+    ARCH_NUCLEUS[ARCH_NAMES[i]].forEach((v, k) => { S.spawnGenome[3 + k] = v; sliders[3 + k][0].value = v; sliders[3 + k][1].textContent = v; });
     S.spawnMode = 'exact';
     const m = body.querySelector('select[data-key="spawnMode"]'); if (m) m.value = 'exact';
     saveSettings();
@@ -2488,6 +2736,7 @@ const keys = new Set();
 function canvasPos(e) { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
 
 canvas.addEventListener('pointerdown', e => {
+  if (wallpaper) return;
   canvas.setPointerCapture(e.pointerId);
   const [sx, sy] = canvasPos(e);
   ptrs.set(e.pointerId, { sx, sy, x: sx, y: sy, camX: cam.x, camY: cam.y, touch: e.pointerType === 'touch' });
@@ -2508,6 +2757,7 @@ canvas.addEventListener('pointerdown', e => {
 });
 
 canvas.addEventListener('pointermove', e => {
+  if (wallpaper) return;
   const [sx, sy] = canvasPos(e);
   input.mx = sx; input.my = sy; input.over = true;
   const p = ptrs.get(e.pointerId);
@@ -2557,7 +2807,8 @@ window.addEventListener('keydown', e => {
   if (k === ' ') { e.preventDefault(); space = true; togglePause(); }
   else if (k === '.') stepOnce();
   else if (k === 'f') fitCamera();
-  else if (k === 'escape') { closePanels(); closeSummary(); }
+  else if (k === 'h') toggleWallpaper();
+  else if (k === 'escape') { if (wallpaper) toggleWallpaper(); closePanels(); closeSummary(); }
   else if (k >= '1' && k <= '5') setTool(Object.keys(TOOLS)[+k - 1]);
   else if (k === '+' || k === '=') zoomAt(vw / 2, vh / 2, 1.15);
   else if (k === '-') zoomAt(vw / 2, vh / 2, 1 / 1.15);
@@ -2579,6 +2830,27 @@ function togglePause() { paused = !paused; $('btnPlay').textContent = paused ? '
 $('btnPlay').onclick = togglePause;
 $('btnStep').onclick = () => { if (!paused) togglePause(); stepOnce(); };
 $('btnFit').onclick = fitCamera;
+
+// ---------- режим обоев: только клетки, на весь экран, вымершие возрождаются ----------
+let wallpaper = false, wallpaperPrevRespawn = false;
+function toggleWallpaper() {
+  wallpaper = !wallpaper;
+  document.body.classList.toggle('wallpaper', wallpaper);
+  closePanels(); closeSummary();
+  if (wallpaper) {
+    wallpaperPrevRespawn = S.autoRespawn; S.autoRespawn = true;
+    input.over = false; input.hovered = null;
+    if (paused) togglePause();
+    try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {}); } catch (e) { /* ignore */ }
+  } else {
+    S.autoRespawn = wallpaperPrevRespawn;
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) { /* ignore */ }
+  }
+  requestAnimationFrame(() => { resizeCanvas(); fitCamera(); });
+}
+$('btnWallpaper').onclick = toggleWallpaper;
+canvas.addEventListener('dblclick', () => { if (wallpaper) toggleWallpaper(); });
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && wallpaper) toggleWallpaper(); setTimeout(resizeCanvas, 50); });
 
 const speed = $('speedSlider');
 speed.oninput = () => { timeScale = parseFloat(speed.value); $('speedVal').textContent = timeScale.toFixed(1) + '×'; };
@@ -2729,7 +3001,7 @@ function frame(now) {
   handleKeys(dt);
   advance(dt);
 
-  input.hovered = input.over ? pickCell(...screenToWorld(input.mx, input.my)) : null;
+  input.hovered = input.over && !wallpaper ? pickCell(...screenToWorld(input.mx, input.my)) : null;
   render(now);
   updateHoverPanel(now);
 
